@@ -1,0 +1,10 @@
+# Safety net at the root — each project (frontend/, backend/) has its own
+# .gitignore that already excludes node_modules, build output, and .env
+# files within its own tree. This just catches anything at the root itself.
+.env
+.env.*
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
