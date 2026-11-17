@@ -24,7 +24,9 @@ export default function SchedulePage() {
   const { updateUser } = useSessionStore();
   const { error: toastError } = useToast();
   const [dailyMinutes, setDailyMinutes] = useState(30);
-  const [activeDays, setActiveDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  // DAYS[0] is 'Lun' (Monday), so weekdays are indices 0-4, not 1-5 — the
+  // previous default pre-selected Tue-Sat instead of Mon-Fri.
+  const [activeDays, setActiveDays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [isPending, setIsPending] = useState(false);
 
   function toggleDay(i: number) {

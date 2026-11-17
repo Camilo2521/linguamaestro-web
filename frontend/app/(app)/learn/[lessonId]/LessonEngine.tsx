@@ -9,8 +9,11 @@ import { Button } from '@/components/ui/button';
 import { MultipleChoice } from '@/components/learning/MultipleChoice';
 import { FillBlank } from '@/components/learning/FillBlank';
 import { FlashCard } from '@/components/learning/FlashCard';
+import { Reorder } from '@/components/learning/Reorder';
 import { lessonsApi } from '@/lib/api/lessons';
 import { useToast } from '@/stores/ui.store';
+import { useSessionStore } from '@/stores/session.store';
+import type { CEFRLevel } from '@/types/domain.types';
 
 interface Exercise {
   id: string;
@@ -33,6 +36,7 @@ type ExerciseResult = { exerciseId: string; correct: boolean; timeMs: number };
 export function LessonEngine({ lesson, exercises, enrollmentId }: Props) {
   const router = useRouter();
   const { success, error: toastError } = useToast();
+  const updateEnrollment = useSessionStore((s) => s.updateEnrollment);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [results, setResults] = useState<ExerciseResult[]>([]);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -41,6 +45,7 @@ export function LessonEngine({ lesson, exercises, enrollmentId }: Props) {
   const [exerciseStart, setExerciseStart] = useState(() => Date.now());
   const [isComplete, setIsComplete] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [leveledUpTo, setLeveledUpTo] = useState<string | null>(null);
 
   const currentExercise = exercises[currentIdx] ?? null;
   const progress = exercises.length > 0 ? ((currentIdx) / exercises.length) * 100 : 0;
@@ -76,6 +81,10 @@ export function LessonEngine({ lesson, exercises, enrollmentId }: Props) {
 
       const result = await lessonsApi.complete(lesson.id, enrollmentId, score, timeSpentSeconds);
       success(`¡Lección completada! +${result.data.xpEarned} XP`);
+      if (result.data.leveledUp) {
+        updateEnrollment(enrollmentId, { current_level: result.data.leveledUp as CEFRLevel });
+        setLeveledUpTo(result.data.leveledUp);
+      }
       setIsComplete(true);
     } catch {
       toastError('Error al guardar el progreso');
@@ -95,7 +104,7 @@ export function LessonEngine({ lesson, exercises, enrollmentId }: Props) {
         animate={{ opacity: 1, scale: 1 }}
         className="min-h-[60vh] flex flex-col items-center justify-center text-center gap-6 py-12"
       >
-        <div className="text-6xl">{pct >= 80 ? '🎉' : pct >= 60 ? '👍' : '📚'}</div>
+        <div className="text-6xl">{leveledUpTo ? '🏆' : pct >= 80 ? '🎉' : pct >= 60 ? '👍' : '📚'}</div>
         <div>
           <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">
             {pct >= 80 ? '¡Excelente!' : pct >= 60 ? '¡Bien hecho!' : 'Sigue practicando'}
@@ -103,6 +112,15 @@ export function LessonEngine({ lesson, exercises, enrollmentId }: Props) {
           <p className="text-[var(--color-text-secondary)] mt-1">
             {correct} de {total} respuestas correctas · {pct}%
           </p>
+          {leveledUpTo && (
+            <motion.p
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-3 text-sm font-semibold text-[var(--color-accent-gold)]"
+            >
+              ¡Subiste de nivel! Ahora estás en {leveledUpTo}
+            </motion.p>
+          )}
         </div>
         <div className="flex gap-3">
           <Button variant="secondary" onClick={() => router.push('/learn')}>
@@ -160,7 +178,7 @@ export function LessonEngine({ lesson, exercises, enrollmentId }: Props) {
               showFeedback={showFeedback}
             />
           )}
-          {currentExercise.type === 'flashcard' && (
+          {(currentExercise.type === 'flashcard' || currentExercise.type === 'speaking') && (
             <FlashCard
               front={currentExercise.question}
               back={currentExercise.correct_answer}
@@ -168,20 +186,14 @@ export function LessonEngine({ lesson, exercises, enrollmentId }: Props) {
               showFeedback={showFeedback}
             />
           )}
-          {(currentExercise.type === 'speaking' || currentExercise.type === 'reorder') && (
-            <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-[var(--color-text-primary)] leading-relaxed">
-                {currentExercise.question}
-              </h2>
-              <p className="text-sm text-[var(--color-text-muted)]">
-                Este tipo de ejercicio no está disponible todavía en esta versión.
-              </p>
-              {!showFeedback && (
-                <Button onClick={() => handleAnswer(currentExercise.correct_answer, true)}>
-                  Continuar →
-                </Button>
-              )}
-            </div>
+          {currentExercise.type === 'reorder' && (
+            <Reorder
+              question={currentExercise.question}
+              correctAnswer={currentExercise.correct_answer}
+              explanation={currentExercise.explanation}
+              onAnswer={handleAnswer}
+              showFeedback={showFeedback}
+            />
           )}
         </motion.div>
       </AnimatePresence>

@@ -1,8 +1,9 @@
 # LinguaMaestro
 
-LinguaMaestro is a CEFR-certified language-learning app: onboarding + placement,
-spaced-repetition vocabulary review (SM-2), gamified lessons, and an
-AI-graded oral exam (Whisper transcription + Claude evaluation).
+LinguaMaestro is a CEFR-structured language-learning app: onboarding +
+placement, spaced-repetition vocabulary review (SM-2), gamified lessons,
+and a Practice section (speaking, shadowing, debate, writing) across 6
+languages and all CEFR levels (A1-C2, NATIVE).
 
 The project is split into three independent projects, each with its own
 `package.json` and its own way of running:
@@ -39,7 +40,7 @@ up on a fresh project.
 **2. Backend**
 ```
 cd backend
-cp .env.example .env      # fill in your Supabase + AI provider keys
+cp .env.example .env      # fill in your Supabase keys
 npm install
 npm run dev                # http://localhost:4000
 ```
@@ -58,9 +59,8 @@ NEXT_PUBLIC_API_URL=http://localhost:4000
 
 ## Where to go next
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) — how auth, requests, and the exam
-  pipeline flow between the three pieces, and why the split looks the way it
-  does.
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — how auth and requests flow between
+  the three pieces, and why the split looks the way it does.
 - [API.md](./API.md) — every backend endpoint, its auth requirement, and its
   request/response shape.
 - [DATABASE.md](./DATABASE.md) — table-by-table schema reference and the two

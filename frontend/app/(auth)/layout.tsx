@@ -14,7 +14,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             'radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99,102,241,0.15) 0%, transparent 60%)',
         }}
       />
-      <div className="w-full max-w-md relative z-10">{children}</div>
+      <main className="w-full max-w-md relative z-10">{children}</main>
     </div>
   );
 }

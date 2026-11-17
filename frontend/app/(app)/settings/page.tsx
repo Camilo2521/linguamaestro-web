@@ -168,7 +168,7 @@ export default function SettingsPage() {
             {[
               { label: 'Racha actual', value: `${user?.current_streak ?? 0}d` },
               { label: 'Racha máx.', value: `${user?.longest_streak ?? 0}d` },
-              { label: 'XP total', value: (0).toLocaleString() },
+              { label: 'XP total', value: (enrollment.xp_total ?? 0).toLocaleString() },
             ].map(({ label, value }) => (
               <div key={label} className="text-center">
                 <p className="text-lg font-bold text-[var(--color-text-primary)]">{value}</p>

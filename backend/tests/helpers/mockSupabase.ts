@@ -6,7 +6,7 @@ import { vi } from 'vitest';
  * postgrest-js builder behaves. */
 export function makeQueryBuilder(resolved: { data: unknown; error: unknown } = { data: null, error: null }) {
   const builder: Record<string, unknown> = {};
-  const methods = ['select', 'insert', 'update', 'upsert', 'eq', 'gte', 'lte', 'order', 'limit'];
+  const methods = ['select', 'insert', 'update', 'upsert', 'eq', 'is', 'in', 'gte', 'lte', 'order', 'limit'];
   for (const m of methods) builder[m] = vi.fn().mockReturnValue(builder);
   builder['single'] = vi.fn().mockResolvedValue(resolved);
   builder['then'] = (resolve: (v: unknown) => void) => Promise.resolve(resolved).then(resolve);

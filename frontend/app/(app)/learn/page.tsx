@@ -78,7 +78,7 @@ export default function LearnPage() {
         </div>
         <div>
           <p className="text-sm font-semibold text-[var(--color-text-primary)]">Repasar vocabulario (SRS)</p>
-          <p className="text-xs text-[var(--color-text-muted)]">Repetición espaciada con FSRS v5</p>
+          <p className="text-xs text-[var(--color-text-muted)]">Repetición espaciada (SM-2)</p>
         </div>
         <svg className="h-4 w-4 text-violet-400 ml-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />

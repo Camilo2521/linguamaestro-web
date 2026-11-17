@@ -19,7 +19,12 @@ router.post('/register', authLimiter, async (req, res) => {
     options: { data: { full_name: parsed.data.fullName } },
   });
 
-  if (error) return res.status(400).json({ success: false, error: error.message });
+  if (error) {
+    const message = error.message === 'User already registered'
+      ? 'Ese email ya tiene una cuenta. Inicia sesión en su lugar.'
+      : error.message;
+    return res.status(400).json({ success: false, error: message });
+  }
 
   if (data.user && !data.session) {
     // Email confirmation is required by this Supabase project's auth settings.

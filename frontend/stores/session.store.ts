@@ -11,6 +11,7 @@ interface SessionState {
   setEnrollments: (enrollments: Enrollment[]) => void;
   setActiveEnrollment: (id: string) => void;
   updateUser: (patch: Partial<UserProfile>) => void;
+  updateEnrollment: (id: string, patch: Partial<Enrollment>) => void;
   clearSession: () => void;
 }
 
@@ -32,6 +33,11 @@ export const useSessionStore = create<SessionState>()(
         updateUser: (patch) =>
           set((state) => ({
             user: state.user ? { ...state.user, ...patch } : null,
+          })),
+
+        updateEnrollment: (id, patch) =>
+          set((state) => ({
+            enrollments: state.enrollments.map((e) => (e.id === id ? { ...e, ...patch } : e)),
           })),
 
         clearSession: () =>

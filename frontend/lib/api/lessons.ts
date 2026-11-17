@@ -13,7 +13,7 @@ export const lessonsApi = {
     );
   },
   complete(lessonId: string, enrollmentId: string, score: number, timeSpentSeconds: number) {
-    return api.post<{ success: true; data: { xpEarned: number } }>(`/lessons/${lessonId}/complete`, {
+    return api.post<{ success: true; data: { xpEarned: number; leveledUp: string | null } }>(`/lessons/${lessonId}/complete`, {
       enrollmentId,
       score,
       timeSpentSeconds,

@@ -12,6 +12,7 @@ import onboardingRoutes from './routes/onboarding.routes.js';
 import lessonsRoutes from './routes/lessons.routes.js';
 import srsRoutes from './routes/srs.routes.js';
 import activityRoutes from './routes/activity.routes.js';
+import practiceRoutes from './routes/practice.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
 
 // CORS_ORIGIN is a comma-separated allowlist (e.g. two Vercel domains, or a
@@ -53,6 +54,7 @@ export function createApp() {
   app.use('/lessons', lessonsRoutes);
   app.use('/srs', srsRoutes);
   app.use('/activity', activityRoutes);
+  app.use('/practice', practiceRoutes);
   app.use('/dashboard', dashboardRoutes);
 
   app.use((_req, res) => {

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getUserClient } from '../lib/supabase.js';
 import { requireAuth } from '../middleware/auth.js';
+import { getNextLevel } from '../utils/levels.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -112,7 +113,109 @@ router.post('/:lessonId/complete', async (req, res) => {
   });
   if (logError) console.error(`activity_logs insert failed for lesson ${lessonId}:`, logError.message);
 
-  return res.json({ success: true, data: { xpEarned } });
+  // Completing a lesson introduces vocabulary into the learner's SRS deck —
+  // without this, /srs/due would stay empty forever, since nothing else in
+  // the app ever seeds srs_items. Safe to run on every completion
+  // (including repeats): the upsert below ignores rows already seeded for
+  // this enrollment+vocabulary pair.
+  //
+  // Prefer words explicitly tied to this lesson (vocabulary_reference.lesson_id)
+  // — seeding the learner's whole level in one shot the moment they finish
+  // lesson 1 of 8 would dump dozens of words they've never seen into their
+  // review queue. Only fall back to the old level-wide seeding for content
+  // that predates this column (lesson_id is null on every row).
+  const { data: lessonMeta } = await supabase
+    .from('lessons')
+    .select('language_code, level')
+    .eq('id', lessonId)
+    .single();
+
+  if (lessonMeta) {
+    const { data: lessonVocab, error: lessonVocabError } = await supabase
+      .from('vocabulary_reference')
+      .select('id')
+      .eq('lesson_id', lessonId);
+
+    let vocabulary = lessonVocab;
+    let vocabError = lessonVocabError;
+
+    if (!vocabError && (!lessonVocab || lessonVocab.length === 0)) {
+      ({ data: vocabulary, error: vocabError } = await supabase
+        .from('vocabulary_reference')
+        .select('id')
+        .eq('language_code', lessonMeta.language_code)
+        .eq('level', lessonMeta.level)
+        .is('lesson_id', null));
+    }
+
+    if (vocabError) {
+      console.error(`vocabulary_reference lookup failed for lesson ${lessonId}:`, vocabError.message);
+    } else if (vocabulary && vocabulary.length > 0) {
+      const srsRows = vocabulary.map((v) => ({
+        enrollment_id: enrollmentId,
+        lesson_id: lessonId,
+        vocabulary_id: v.id,
+        ease_factor: 2.5,
+        interval_days: 1,
+        repetitions: 0,
+        next_review_at: new Date().toISOString(),
+      }));
+      const { error: seedError } = await supabase
+        .from('srs_items')
+        .upsert(srsRows, { onConflict: 'enrollment_id,vocabulary_id', ignoreDuplicates: true });
+      if (seedError) console.error(`srs_items seed failed for lesson ${lessonId}:`, seedError.message);
+    }
+  }
+
+  // Advancing current_level used to happen only on passing the (now
+  // removed) certification exam — that was the single path that ever
+  // changed it after onboarding. Without a replacement, a learner who
+  // finishes every lesson at their level has nowhere to go: /learn would
+  // keep showing the same completed list forever. Instead, finishing the
+  // last remaining lesson at the enrollment's current level auto-advances
+  // it to the next CEFR level — no gate, just content completion.
+  let leveledUp: string | null = null;
+  const { data: enrollment } = await supabase
+    .from('enrollments')
+    .select('id, language_code, current_level')
+    .eq('id', enrollmentId)
+    .eq('user_id', req.userId)
+    .single();
+
+  if (enrollment) {
+    const nextLevel = getNextLevel(enrollment.current_level);
+    if (nextLevel) {
+      const { data: levelLessons } = await supabase
+        .from('lessons')
+        .select('id')
+        .eq('language_code', enrollment.language_code)
+        .eq('level', enrollment.current_level);
+      const levelLessonIds = (levelLessons ?? []).map((l) => l.id);
+
+      if (levelLessonIds.length > 0) {
+        const { data: completedRows } = await supabase
+          .from('lesson_progress')
+          .select('lesson_id')
+          .eq('enrollment_id', enrollmentId)
+          .eq('completed', true)
+          .in('lesson_id', levelLessonIds);
+
+        if ((completedRows ?? []).length >= levelLessonIds.length) {
+          const { error: levelUpError } = await supabase
+            .from('enrollments')
+            .update({ current_level: nextLevel })
+            .eq('id', enrollmentId);
+          if (levelUpError) {
+            console.error(`level-up failed for enrollment ${enrollmentId}:`, levelUpError.message);
+          } else {
+            leveledUp = nextLevel;
+          }
+        }
+      }
+    }
+  }
+
+  return res.json({ success: true, data: { xpEarned, leveledUp } });
 });
 
 export default router;

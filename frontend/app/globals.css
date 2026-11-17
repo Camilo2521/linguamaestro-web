@@ -8,7 +8,10 @@
   --color-bg-overlay: #222845;
 
   /* ── Accents ── */
-  --color-accent-primary: #4F8EF7;
+  /* White text on this background needs >=4.5:1 contrast for WCAG AA (it's
+     the default Button fill) — #4F8EF7 only reached ~3.2:1. Same hue/
+     saturation, darker lightness (63.9% -> 52.9%) gets to ~4.66:1. */
+  --color-accent-primary: #196CF5;
   --color-accent-secondary: #7C3AED;
   --color-accent-gold: #F5A623;
   --color-accent-coral: #E94560;

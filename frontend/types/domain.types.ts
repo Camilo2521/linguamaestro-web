@@ -112,6 +112,26 @@ export interface SRSItem {
 
 export type SRSRating = 0 | 1 | 2 | 3 | 4 | 5;
 
+// ── Practice ─────────────────────────────────────────────
+export type PracticeMode =
+  | 'speaking' | 'shadowing' | 'debate' | 'writing'
+  | 'multiple_choice' | 'fill_blank' | 'pronunciation';
+
+export interface PracticePrompt {
+  id: string;
+  language_code: LanguageCode;
+  level: CEFRLevel;
+  mode: PracticeMode;
+  prompt: string;
+  reference_text: string | null;
+  source: string | null;
+  target_seconds: number | null;
+  target_words: number | null;
+  options: string[] | null;
+  correct_answer: string | null;
+  order_index: number;
+}
+
 // ── Gamification ─────────────────────────────────────────
 export interface Streak {
   currentStreak: number;

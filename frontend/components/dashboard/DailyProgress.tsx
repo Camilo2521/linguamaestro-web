@@ -3,18 +3,23 @@
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useDailyProgress } from '@/hooks/useDailyProgress';
-import { useActiveEnrollment } from '@/stores/session.store';
+import { useActiveEnrollment, useSessionStore } from '@/stores/session.store';
 import { Skeleton } from '@/components/ui/skeleton';
 
 export function DailyProgress() {
   const enrollment = useActiveEnrollment();
+  const user = useSessionStore((s) => s.user);
   const { data, isLoading } = useDailyProgress();
 
   if (isLoading) return <Skeleton height={120} className="rounded-[var(--radius-xl)]" />;
   if (!data?.success || !enrollment) return null;
 
   const { totalMinutes, limitMinutes, totalXP } = data.data;
-  const goalMinutes = enrollment.daily_goal_minutes ?? 30;
+  // The goal a user sets in Settings (PATCH /dashboard/settings/daily-goal)
+  // only ever writes users.daily_goal_minutes — enrollments.daily_goal_minutes
+  // is a separate column that's stuck at its schema default (30) forever,
+  // since nothing updates it after the enrollment row is created.
+  const goalMinutes = user?.daily_goal_minutes ?? 30;
   const pct = Math.min(100, Math.round((totalMinutes / goalMinutes) * 100));
 
   return (
