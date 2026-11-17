@@ -49,13 +49,37 @@ router.patch('/diagnostic', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ success: false, error: 'Datos inválidos' });
 
   const supabase = getUserClient(req.accessToken!);
-  const { error } = await supabase
+
+  // The placement level is chosen client-side, so this endpoint may only set
+  // it once per enrollment — otherwise any learner could jump to any level
+  // (including NATIVE) at any time and bypass lesson-based progression. The
+  // `diagnostic_completed = false` filter makes the check-and-set a single
+  // atomic UPDATE: two concurrent calls can't both succeed.
+  const { data: updated, error } = await supabase
     .from('enrollments')
     .update({ current_level: parsed.data.level, diagnostic_completed: true })
     .eq('id', parsed.data.enrollmentId)
-    .eq('user_id', req.userId);
+    .eq('user_id', req.userId)
+    .eq('diagnostic_completed', false)
+    .select('id');
 
   if (error) return res.status(400).json({ success: false, error: error.message });
+
+  if (!updated || updated.length === 0) {
+    const { data: enrollment } = await supabase
+      .from('enrollments')
+      .select('id')
+      .eq('id', parsed.data.enrollmentId)
+      .eq('user_id', req.userId)
+      .maybeSingle();
+    if (!enrollment) return res.status(404).json({ success: false, error: 'Enrollment no encontrado' });
+    return res.status(409).json({
+      success: false,
+      error: 'Ya completaste la prueba de nivel para este idioma.',
+      code: 'DIAGNOSTIC_ALREADY_COMPLETED',
+    });
+  }
+
   return res.json({ success: true });
 });
 

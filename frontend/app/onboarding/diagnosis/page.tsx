@@ -52,7 +52,7 @@ type Phase = 'intro' | 'test' | 'result';
 
 export default function DiagnosisPage() {
   const router = useRouter();
-  const { error: toastError } = useToast();
+  const { error: toastError, warning: toastWarning } = useToast();
   const [phase, setPhase] = useState<Phase>('intro');
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, boolean>>({});
@@ -97,6 +97,14 @@ export default function DiagnosisPage() {
       await onboardingApi.setDiagnosticLevel(enrollment.id, assignedLevel);
       router.push('/onboarding/schedule');
     } catch (err) {
+      // The placement level can only be set once per enrollment (e.g. the
+      // learner came back to this step with the browser's back button) —
+      // the first result stands, so just carry on with onboarding.
+      if (err instanceof ApiError && err.code === 'DIAGNOSTIC_ALREADY_COMPLETED') {
+        toastWarning(err.message);
+        router.push('/onboarding/schedule');
+        return;
+      }
       toastError(err instanceof ApiError ? err.message : 'No se pudo guardar tu nivel');
     } finally {
       setIsPending(false);

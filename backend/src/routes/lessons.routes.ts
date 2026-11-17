@@ -59,44 +59,107 @@ router.get('/:lessonId', async (req, res) => {
   return res.json({ success: true, data: { lesson, exercises, enrollmentId: enrollment.id } });
 });
 
+// Upper bound matches the 360-minute daily activity cap — a single lesson
+// can't plausibly take longer, and an unbounded value would inflate
+// activity_logs.duration_minutes (daily progress, dashboard).
+const MAX_LESSON_SECONDS = 6 * 60 * 60;
+
 const completeSchema = z.object({
   enrollmentId: z.string().uuid(),
   score: z.number(),
-  timeSpentSeconds: z.number().int().min(0),
+  timeSpentSeconds: z.number().int().min(0).max(MAX_LESSON_SECONDS),
 });
+
+const lessonIdSchema = z.string().uuid();
 
 router.post('/:lessonId/complete', async (req, res) => {
   const parsed = completeSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ success: false, error: 'Datos inválidos' });
+  const parsedLessonId = lessonIdSchema.safeParse(req.params.lessonId);
+  if (!parsed.success || !parsedLessonId.success) {
+    return res.status(400).json({ success: false, error: 'Datos inválidos' });
+  }
 
   const { enrollmentId, timeSpentSeconds } = parsed.data;
-  const lessonId = req.params.lessonId;
+  const lessonId = parsedLessonId.data;
   const supabase = getUserClient(req.accessToken!);
 
-  const { data: existing } = await supabase
-    .from('lesson_progress')
-    .select('id, completed')
-    .eq('enrollment_id', enrollmentId)
-    .eq('lesson_id', lessonId)
-    .single();
+  const [{ data: enrollment }, { data: lessonMeta }] = await Promise.all([
+    supabase
+      .from('enrollments')
+      .select('id, language_code, current_level')
+      .eq('id', enrollmentId)
+      .eq('user_id', req.userId)
+      .maybeSingle(),
+    supabase.from('lessons').select('id, language_code, level').eq('id', lessonId).maybeSingle(),
+  ]);
+
+  if (!enrollment) return res.status(404).json({ success: false, error: 'Enrollment no encontrado' });
+  if (!lessonMeta) return res.status(404).json({ success: false, error: 'Lección no encontrada' });
+
+  // Only lessons from the enrollment's own language and current level can be
+  // completed — the same set GET /lessons lists. Without this check, the
+  // completion endpoint could be used to earn XP from any lesson in the
+  // catalogue (other languages, other levels) that the UI never offers.
+  if (lessonMeta.language_code !== enrollment.language_code || lessonMeta.level !== enrollment.current_level) {
+    return res.status(409).json({
+      success: false,
+      error: 'Esta lección no pertenece a tu nivel actual.',
+      code: 'LESSON_NOT_IN_CURRENT_LEVEL',
+    });
+  }
 
   // score is client-supplied — clamp it so a tampered request can't mint
   // arbitrary XP via increment_xp.
   const clampedScore = Math.max(0, Math.min(1, parsed.data.score));
-  const xpEarned = existing?.completed ? 0 : Math.round(clampedScore * 100);
+  const progressFields = {
+    completed: true,
+    score: clampedScore,
+    time_spent_seconds: timeSpentSeconds,
+    completed_at: new Date().toISOString(),
+  };
 
-  const { error } = await supabase
+  // XP is only awarded to the request that actually flips this lesson to
+  // completed. Each step below is a single atomic statement whose returned
+  // rows say whether *this* request made the change, so two concurrent
+  // completions of the same lesson can't both earn XP (a separate
+  // read-then-write check could).
+  //   1. INSERT ... ON CONFLICT DO NOTHING RETURNING — first ever attempt.
+  //   2. UPDATE ... WHERE completed = false RETURNING — a row existed but
+  //      wasn't completed yet.
+  //   3. Otherwise it's a repeat: record the latest attempt, no XP.
+  const { data: inserted, error: insertError } = await supabase
     .from('lesson_progress')
-    .upsert({
-      enrollment_id: enrollmentId,
-      lesson_id: lessonId,
-      completed: true,
-      score: clampedScore,
-      time_spent_seconds: timeSpentSeconds,
-      completed_at: new Date().toISOString(),
-    }, { onConflict: 'enrollment_id,lesson_id' });
+    .upsert(
+      { enrollment_id: enrollmentId, lesson_id: lessonId, ...progressFields },
+      { onConflict: 'enrollment_id,lesson_id', ignoreDuplicates: true },
+    )
+    .select('id');
+  if (insertError) return res.status(400).json({ success: false, error: insertError.message });
 
-  if (error) return res.status(400).json({ success: false, error: error.message });
+  let firstCompletion = (inserted?.length ?? 0) > 0;
+
+  if (!firstCompletion) {
+    const { data: flipped, error: flipError } = await supabase
+      .from('lesson_progress')
+      .update(progressFields)
+      .eq('enrollment_id', enrollmentId)
+      .eq('lesson_id', lessonId)
+      .eq('completed', false)
+      .select('id');
+    if (flipError) return res.status(400).json({ success: false, error: flipError.message });
+    firstCompletion = (flipped?.length ?? 0) > 0;
+  }
+
+  if (!firstCompletion) {
+    const { error: repeatError } = await supabase
+      .from('lesson_progress')
+      .update(progressFields)
+      .eq('enrollment_id', enrollmentId)
+      .eq('lesson_id', lessonId);
+    if (repeatError) return res.status(400).json({ success: false, error: repeatError.message });
+  }
+
+  const xpEarned = firstCompletion ? Math.round(clampedScore * 100) : 0;
 
   if (xpEarned > 0) {
     const { error: xpError } = await supabase.rpc('increment_xp', { p_enrollment_id: enrollmentId, p_xp: xpEarned });
@@ -124,13 +187,7 @@ router.post('/:lessonId/complete', async (req, res) => {
   // lesson 1 of 8 would dump dozens of words they've never seen into their
   // review queue. Only fall back to the old level-wide seeding for content
   // that predates this column (lesson_id is null on every row).
-  const { data: lessonMeta } = await supabase
-    .from('lessons')
-    .select('language_code, level')
-    .eq('id', lessonId)
-    .single();
-
-  if (lessonMeta) {
+  {
     const { data: lessonVocab, error: lessonVocabError } = await supabase
       .from('vocabulary_reference')
       .select('id')
@@ -174,15 +231,11 @@ router.post('/:lessonId/complete', async (req, res) => {
   // keep showing the same completed list forever. Instead, finishing the
   // last remaining lesson at the enrollment's current level auto-advances
   // it to the next CEFR level — no gate, just content completion.
+  //
+  // NATIVE is terminal: getNextLevel('NATIVE') is null, so nothing advances
+  // past it. C2 → NATIVE is intentional (product decision).
   let leveledUp: string | null = null;
-  const { data: enrollment } = await supabase
-    .from('enrollments')
-    .select('id, language_code, current_level')
-    .eq('id', enrollmentId)
-    .eq('user_id', req.userId)
-    .single();
-
-  if (enrollment) {
+  {
     const nextLevel = getNextLevel(enrollment.current_level);
     if (nextLevel) {
       const { data: levelLessons } = await supabase
@@ -201,13 +254,20 @@ router.post('/:lessonId/complete', async (req, res) => {
           .in('lesson_id', levelLessonIds);
 
         if ((completedRows ?? []).length >= levelLessonIds.length) {
-          const { error: levelUpError } = await supabase
+          // Compare-and-set on current_level: only advances from the level
+          // this request validated against, so concurrent completions can't
+          // skip a level, and only the request that actually advanced it
+          // reports leveledUp.
+          const { data: advanced, error: levelUpError } = await supabase
             .from('enrollments')
             .update({ current_level: nextLevel })
-            .eq('id', enrollmentId);
+            .eq('id', enrollmentId)
+            .eq('user_id', req.userId)
+            .eq('current_level', enrollment.current_level)
+            .select('id');
           if (levelUpError) {
             console.error(`level-up failed for enrollment ${enrollmentId}:`, levelUpError.message);
-          } else {
+          } else if ((advanced?.length ?? 0) > 0) {
             leveledUp = nextLevel;
           }
         }
