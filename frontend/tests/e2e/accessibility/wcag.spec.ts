@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 const PUBLIC_ROUTES = ['/login', '/register'];
-const AUTH_ROUTES = ['/dashboard', '/exam', '/exam/prepare'];
+const AUTH_ROUTES = ['/dashboard', '/practice', '/progress'];
 
 test.describe('WCAG 2.1 AA — public pages', () => {
   for (const route of PUBLIC_ROUTES) {

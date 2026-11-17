@@ -97,10 +97,3 @@ export const api = {
     request<T>(path, { method: 'PATCH', body: data !== undefined ? JSON.stringify(data) : undefined }),
   postForm: <T>(path: string, form: FormData) => request<T>(path, { method: 'POST', body: form }),
 };
-
-/** Base URL + access token, for building an EventSource URL (SSE can't set headers). */
-export function sseUrl(path: string): string {
-  const token = authStorage.getAccessToken() ?? '';
-  const sep = path.includes('?') ? '&' : '?';
-  return `${API_URL}${path}${sep}token=${encodeURIComponent(token)}`;
-}

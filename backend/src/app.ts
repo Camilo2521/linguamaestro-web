@@ -1,5 +1,4 @@
 import express from 'express';
-import multer from 'multer';
 // Patches Express so a rejected promise inside an `async (req, res) => {}`
 // handler reaches the error-handling middleware below instead of becoming
 // an unhandled rejection — Express 4 doesn't do this on its own, and almost
@@ -13,7 +12,6 @@ import onboardingRoutes from './routes/onboarding.routes.js';
 import lessonsRoutes from './routes/lessons.routes.js';
 import srsRoutes from './routes/srs.routes.js';
 import activityRoutes from './routes/activity.routes.js';
-import examRoutes from './routes/exam.routes.js';
 import dashboardRoutes from './routes/dashboard.routes.js';
 
 // CORS_ORIGIN is a comma-separated allowlist (e.g. two Vercel domains, or a
@@ -55,7 +53,6 @@ export function createApp() {
   app.use('/lessons', lessonsRoutes);
   app.use('/srs', srsRoutes);
   app.use('/activity', activityRoutes);
-  app.use('/exam', examRoutes);
   app.use('/dashboard', dashboardRoutes);
 
   app.use((_req, res) => {
@@ -64,10 +61,6 @@ export function createApp() {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    if (err instanceof multer.MulterError) {
-      const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
-      return res.status(status).json({ success: false, error: err.message });
-    }
     if (err instanceof SyntaxError && 'body' in (err as unknown as Record<string, unknown>)) {
       // Malformed JSON body from express.json()
       return res.status(400).json({ success: false, error: 'JSON inválido en el cuerpo de la petición' });

@@ -21,12 +21,7 @@ declare global {
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
-  // The browser's EventSource API (used for the exam-evaluation SSE stream)
-  // can't set custom headers, so that one route is reached with the token
-  // as a query param instead — still validated the same way below.
-  const token = header?.startsWith('Bearer ')
-    ? header.slice('Bearer '.length)
-    : typeof req.query.token === 'string' ? req.query.token : null;
+  const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
   if (!token) {
     return res.status(401).json({ success: false, error: 'No autenticado' });
   }

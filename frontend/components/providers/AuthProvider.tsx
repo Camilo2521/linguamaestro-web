@@ -9,7 +9,7 @@ import type { UserProfile, Enrollment } from '@/types/domain.types';
 
 const PUBLIC_ROUTES = new Set(['/', '/login', '/register']);
 const ONBOARDING_PREFIX = '/onboarding';
-const APP_PREFIXES = ['/dashboard', '/learn', '/practice', '/exam', '/progress', '/settings'];
+const APP_PREFIXES = ['/dashboard', '/learn', '/practice', '/progress', '/settings'];
 
 // Route protection used to live in middleware.ts, reading the Supabase
 // session cookie server-side. Now that the frontend is a separate project

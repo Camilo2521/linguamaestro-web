@@ -10,14 +10,3 @@ export const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, error: 'Demasiados intentos. Intenta de nuevo más tarde.' },
 });
-
-/** Exam-attempt creation gates real Whisper + Claude API spend downstream
- * (via the evaluate route) — throttle it independently of the generic
- * per-IP limits above. */
-export const examAttemptLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Demasiados intentos de examen. Intenta de nuevo más tarde.' },
-});

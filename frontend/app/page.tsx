@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'LinguaMaestro — Aprende idiomas con certificación CEFR',
+  title: 'LinguaMaestro — Aprende idiomas con niveles CEFR',
 };
 
 const LANGUAGES = [
@@ -16,9 +16,9 @@ const LANGUAGES = [
 ];
 
 const FEATURES = [
-  { icon: '🧠', title: 'FSRS v5', desc: 'Repetición espaciada adaptativa de última generación' },
-  { icon: '🎤', title: 'IA Claude', desc: 'Evaluación oral con retroalimentación detallada' },
-  { icon: '📜', title: 'CEFR Oficial', desc: 'Certificación A1→C2 reconocida internacionalmente' },
+  { icon: '🧠', title: 'Repetición espaciada', desc: 'Algoritmo SM-2 que programa tus repasos justo antes de que olvides' },
+  { icon: '🎤', title: 'Práctica integral', desc: 'Habla libre, shadowing, debate y escritura en cada nivel' },
+  { icon: '📜', title: 'Niveles CEFR', desc: 'Progresión estructurada de A1 a nivel nativo' },
   { icon: '🔥', title: 'Gamificación', desc: 'Rachas, logros y competencias para mantener el hábito' },
 ];
 
@@ -52,7 +52,7 @@ export default function LandingPage() {
             <span className="text-[var(--color-accent-primary)]">ciencia real</span>
           </h1>
           <p className="text-lg text-[var(--color-text-secondary)] max-w-xl mx-auto leading-relaxed">
-            FSRS v5 + evaluación oral con IA + certificación CEFR. El método que usan los políglotas de élite.
+            Repetición espaciada (SM-2) + práctica oral y escrita + niveles CEFR de A1 a nativo. El método que usan los políglotas de élite.
           </p>
           <div className="flex justify-center gap-3 flex-wrap">
             <Link href="/register">

@@ -3,8 +3,7 @@ export type CEFRLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2' | 'NATIVE';
 export type LessonType = 'vocabulary' | 'grammar' | 'listening' | 'speaking' | 'reading' | 'writing';
 export type ExerciseType = 'multiple_choice' | 'fill_blank' | 'flashcard' | 'speaking' | 'reorder';
 export type SRSState = 'new' | 'learning' | 'review' | 'relearning';
-export type ExamStatus = 'recording' | 'processing' | 'completed' | 'failed';
-export type ActivityType = 'lesson' | 'srs' | 'speaking' | 'listening' | 'writing' | 'exam';
+export type ActivityType = 'lesson' | 'srs' | 'speaking' | 'listening' | 'writing';
 
 // ── User & Auth ──────────────────────────────────────────
 export interface UserProfile {
@@ -39,7 +38,6 @@ export interface Enrollment {
   daily_goal_minutes: number;
   started_at: string;
   diagnostic_completed: boolean;
-  exam_attempts_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -48,7 +46,6 @@ export interface EnrollmentStats {
   total_study_hours: number;
   srs_cards_due: number;
   lessons_completed: number;
-  exam_attempts: number;
   current_streak: number;
 }
 
@@ -115,69 +112,6 @@ export interface SRSItem {
 
 export type SRSRating = 0 | 1 | 2 | 3 | 4 | 5;
 
-// ── Exam ─────────────────────────────────────────────────
-export interface ExamAttempt {
-  id: string;
-  user_id: string;
-  enrollment_id: string;
-  status: ExamStatus;
-  video_url: string | null;
-  duration_seconds: number | null;
-  transcript: string | null;
-  overall_score: number | null;
-  passed: boolean | null;
-  ai_feedback: Record<string, unknown> | null;
-  submitted_at: string | null;
-  evaluated_at: string | null;
-  created_at: string;
-}
-
-export interface DimensionScores {
-  fluency: number;
-  pronunciation: number;
-  grammar: number;
-  vocabulary: number;
-  coherence: number;
-}
-
-export interface DetectedError {
-  type: string;
-  original: string;
-  correction: string;
-  explanation: string;
-  timestamp?: number;
-}
-
-export interface ImprovementTask {
-  week: number;
-  task: string;
-  resources: string[];
-  estimatedMinutes: number;
-}
-
-export interface AIFeedback {
-  overall_score: number;
-  passed: boolean;
-  dimension_scores: DimensionScores;
-  strengths: string[];
-  weaknesses: string[];
-  detected_errors: DetectedError[];
-  improvement_plan: ImprovementTask[];
-  feedback_summary: string;
-  transcript?: string;
-}
-
-export interface ExamEligibility {
-  eligible: boolean;
-  reasons: string[];
-  hoursStudied: number;
-  requiredHours: number;
-  monthsStudied: number;
-  requiredMonths: number;
-  lastAttemptDate: string | null;
-  cooldownDaysRemaining: number;
-}
-
 // ── Gamification ─────────────────────────────────────────
 export interface Streak {
   currentStreak: number;
@@ -193,8 +127,6 @@ export interface LevelConfig {
   min_months: number;
   min_hours: number;
   daily_hours_required: number;
-  min_score_to_pass: number;
-  exam_duration_minutes: number;
   vocabulary_target: number;
   next_level: CEFRLevel | null;
   color: string;
@@ -214,22 +146,4 @@ export interface LanguageConfig {
   hasKanji: boolean;
   fontClass: string;
   description: string;
-}
-
-// ── Evaluation SSE events ─────────────────────────────────
-export type EvalStep =
-  | 'transcribing'
-  | 'analyzing_fluency'
-  | 'analyzing_pronunciation'
-  | 'analyzing_grammar'
-  | 'analyzing_vocabulary'
-  | 'analyzing_coherence'
-  | 'generating_plan'
-  | 'finalizing';
-
-export interface EvalEvent {
-  type: 'step' | 'complete' | 'error';
-  step?: EvalStep;
-  message?: string;
-  data?: Record<string, unknown>;
 }

@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { useSessionStore } from '@/stores/session.store';
 
 const FEATURES = [
-  { icon: '🧠', title: 'Método científico', desc: 'FSRS v5 + repetición espaciada adaptativa' },
-  { icon: '🎤', title: 'Evaluación IA', desc: 'Claude analiza tu pronunciación y gramática' },
-  { icon: '📜', title: 'Certificación CEFR', desc: 'A1 → C2 con exámenes orales verificados' },
+  { icon: '🧠', title: 'Método científico', desc: 'Repetición espaciada (SM-2) que se adapta a tu memoria' },
+  { icon: '🎤', title: 'Práctica integral', desc: 'Habla libre, shadowing, debate y escritura' },
+  { icon: '📜', title: 'Niveles CEFR', desc: 'Progresión estructurada de A1 a nivel nativo' },
   { icon: '🔥', title: 'Rachas y logros', desc: 'Gamificación que mantiene el hábito diario' },
 ];
 

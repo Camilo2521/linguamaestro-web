@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getLevelColor, LEVEL_ORDER, LEVELS } from '@/lib/utils/levels';
 import type { CEFRLevel } from '@/types/domain.types';
@@ -11,7 +10,7 @@ import { dashboardApi } from '@/lib/api/dashboard';
 
 export default function ProgressPage() {
   const router = useRouter();
-  const [data, setData] = useState<{ enrollment: any; attempts: any[]; logs: any[] } | null>(null);
+  const [data, setData] = useState<{ enrollment: any; logs: any[] } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,7 +30,7 @@ export default function ProgressPage() {
     );
   }
 
-  const { enrollment, attempts, logs } = data;
+  const { enrollment, logs } = data;
   const currentLevelIndex = LEVEL_ORDER.indexOf(enrollment.current_level as CEFRLevel);
   const totalXP = logs.reduce((s: number, l: any) => s + (l.xp_earned ?? 0), 0);
 
@@ -78,11 +77,10 @@ export default function ProgressPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {[
           { label: 'XP total', value: totalXP.toLocaleString(), unit: 'puntos' },
           { label: 'Horas totales', value: Math.round(enrollment.total_study_hours ?? 0).toString(), unit: 'horas' },
-          { label: 'Exámenes', value: (attempts?.length ?? 0).toString(), unit: 'intentos' },
         ].map(({ label, value, unit }) => (
           <Card key={label} className="p-4">
             <p className="text-xs text-[var(--color-text-muted)]">{label}</p>
@@ -91,36 +89,6 @@ export default function ProgressPage() {
           </Card>
         ))}
       </div>
-
-      {attempts && attempts.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle className="text-base">Historial de exámenes</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            {attempts.map((a: any) => (
-              <div key={a.id} className="flex items-center justify-between py-2 border-b border-[var(--color-border-default)] last:border-0">
-                <div>
-                  <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                    Examen {a.level ?? enrollment.current_level}
-                  </p>
-                  <p className="text-xs text-[var(--color-text-muted)]">
-                    {new Date(a.created_at).toLocaleDateString('es-ES')}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {a.overall_score != null && (
-                    <span className="text-sm font-bold text-[var(--color-text-primary)]">
-                      {Math.round(a.overall_score * 100)}%
-                    </span>
-                  )}
-                  <Badge variant={a.passed ? 'success' : 'danger'} size="sm">
-                    {a.passed ? 'Aprobado' : 'No aprobado'}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
 
       <Card>
         <CardHeader><CardTitle className="text-base">Actividad reciente</CardTitle></CardHeader>

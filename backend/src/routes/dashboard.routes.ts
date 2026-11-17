@@ -19,11 +19,10 @@ router.get('/', async (req, res) => {
     return res.json({ success: true, data: { profile, enrollment: null, stats: null, activeDates: [], nextLesson: null } });
   }
 
-  const [{ data: srsItems }, { data: activityLogs }, { data: lessonProgress }, { count: examAttemptsCount }, { data: levelLessons }] = await Promise.all([
+  const [{ data: srsItems }, { data: activityLogs }, { data: lessonProgress }, { data: levelLessons }] = await Promise.all([
     supabase.from('srs_items').select('id').eq('enrollment_id', enrollment.id).lte('next_review_at', new Date().toISOString()),
     supabase.from('activity_logs').select('created_at').eq('user_id', req.userId).gte('created_at', new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString()),
     supabase.from('lesson_progress').select('lesson_id, completed').eq('enrollment_id', enrollment.id),
-    supabase.from('exam_attempts').select('id', { count: 'exact', head: true }).eq('enrollment_id', enrollment.id),
     supabase.from('lessons').select('id, title, level').eq('language_code', enrollment.language_code).eq('level', enrollment.current_level).order('order_index', { ascending: true }),
   ]);
 
@@ -35,7 +34,6 @@ router.get('/', async (req, res) => {
     total_study_hours: enrollment.total_study_hours ?? 0,
     srs_cards_due: srsItems?.length ?? 0,
     lessons_completed: completedLessonIds.size,
-    exam_attempts: examAttemptsCount ?? 0,
     current_streak: profile?.current_streak ?? 0,
   };
 
@@ -47,16 +45,15 @@ router.get('/progress', async (req, res) => {
 
   // Not .single(): a user can have more than one active enrollment
   // (multi-language support).
-  const [{ data: enrollments }, { data: attempts }, { data: logs }] = await Promise.all([
+  const [{ data: enrollments }, { data: logs }] = await Promise.all([
     supabase.from('enrollments').select('*').eq('user_id', req.userId).eq('active', true),
-    supabase.from('exam_attempts').select('*').eq('user_id', req.userId).order('created_at', { ascending: false }).limit(10),
     supabase.from('activity_logs').select('duration_minutes, xp_earned, activity_type, created_at').eq('user_id', req.userId).order('created_at', { ascending: false }).limit(30),
   ]);
 
   const enrollment = enrollments?.[0] ?? null;
   if (!enrollment) return res.status(404).json({ success: false, error: 'No hay inscripción activa' });
 
-  return res.json({ success: true, data: { enrollment, attempts: attempts ?? [], logs: logs ?? [] } });
+  return res.json({ success: true, data: { enrollment, logs: logs ?? [] } });
 });
 
 const dailyGoalSchema = z.object({ dailyGoalMinutes: z.number().int().min(5).max(240) });

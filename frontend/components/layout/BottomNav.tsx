@@ -2,14 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, BookOpen, Dumbbell, GraduationCap, BarChart2 } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Dumbbell, BarChart2 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
 
 const NAV_ITEMS = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Inicio' },
   { href: '/learn', icon: BookOpen, label: 'Lecciones' },
   { href: '/practice', icon: Dumbbell, label: 'Práctica' },
-  { href: '/exam', icon: GraduationCap, label: 'Examen' },
   { href: '/progress', icon: BarChart2, label: 'Progreso' },
 ];
 

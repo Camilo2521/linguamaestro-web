@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard, BookOpen, Dumbbell, GraduationCap,
+  LayoutDashboard, BookOpen, Dumbbell,
   BarChart2, Settings, ChevronLeft, ChevronRight, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
@@ -20,7 +20,6 @@ const NAV_ITEMS = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/learn', icon: BookOpen, label: 'Aprender' },
   { href: '/practice', icon: Dumbbell, label: 'Práctica' },
-  { href: '/exam', icon: GraduationCap, label: 'Examen' },
   { href: '/progress', icon: BarChart2, label: 'Progreso' },
   { href: '/settings', icon: Settings, label: 'Ajustes' },
 ];

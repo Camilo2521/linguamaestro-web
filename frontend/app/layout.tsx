@@ -27,8 +27,8 @@ const notoSC = Noto_Sans_SC({
 
 export const metadata: Metadata = {
   title: { default: 'LinguaMaestro', template: '%s — LinguaMaestro' },
-  description: 'Aprende idiomas con certificación oficial. Método científico, resultados reales.',
-  keywords: ['idiomas', 'aprender inglés', 'CEFR', 'cursos de idiomas', 'certificación'],
+  description: 'Aprende idiomas con niveles CEFR y método científico. Resultados reales.',
+  keywords: ['idiomas', 'aprender inglés', 'CEFR', 'cursos de idiomas', 'repetición espaciada'],
   openGraph: {
     type: 'website',
     locale: 'es_ES',

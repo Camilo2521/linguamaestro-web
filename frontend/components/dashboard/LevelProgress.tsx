@@ -7,10 +7,9 @@ import type { CEFRLevel } from '@/types/domain.types';
 interface LevelProgressProps {
   level: CEFRLevel;
   hoursStudied: number;
-  examEligible?: boolean;
 }
 
-export function LevelProgress({ level, hoursStudied, examEligible }: LevelProgressProps) {
+export function LevelProgress({ level, hoursStudied }: LevelProgressProps) {
   const config = LEVELS[level];
   const nextLevel = getNextLevel(level);
   const pct = Math.min(100, Math.round((hoursStudied / config.min_hours) * 100));
@@ -39,18 +38,18 @@ export function LevelProgress({ level, hoursStudied, examEligible }: LevelProgre
           <span>{config.min_hours}h requeridas</span>
         </div>
 
-        {examEligible && (
+        {pct >= 100 && (
           <div className="flex items-center gap-2 p-2.5 rounded-[var(--radius-lg)] bg-[var(--color-accent-gold)]/10 border border-[var(--color-accent-gold)]/30">
             <span className="text-base">🏆</span>
             <p className="text-xs font-medium text-[var(--color-accent-gold)]">
-              Eres elegible para el examen de {level}
+              ¡Completaste las horas de {level}!
             </p>
           </div>
         )}
 
-        {nextLevel && !examEligible && (
+        {nextLevel && pct < 100 && (
           <p className="text-xs text-[var(--color-text-muted)] text-center">
-            {Math.max(0, config.min_hours - Math.round(hoursStudied))}h más para desbloquear el examen → {nextLevel}
+            {Math.max(0, config.min_hours - Math.round(hoursStudied))}h más para avanzar a {nextLevel}
           </p>
         )}
       </CardContent>

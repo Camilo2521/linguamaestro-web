@@ -18,9 +18,11 @@ export function getUserClient(accessToken: string) {
 
 /**
  * Service-role client — bypasses RLS entirely. Only use for operations that
- * legitimately need to escape row ownership (e.g. reading a just-uploaded
- * exam video via a signed URL, calling the AI evaluation pipeline). Every
- * route using this MUST verify ownership itself before touching data.
+ * legitimately need to escape row ownership (e.g. reading a signed storage
+ * URL on a user's behalf). No current route uses this — its one caller was
+ * the exam-evaluation pipeline, removed along with the rest of the oral-exam
+ * feature. Every route using this MUST verify ownership itself before
+ * touching data.
  */
 export const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },

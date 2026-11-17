@@ -46,26 +46,10 @@ export const supabaseHandlers = [
         daily_goal_minutes: 30,
         started_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 120).toISOString(),
         diagnostic_completed: true,
-        exam_attempts_count: 0,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       },
     ]);
-  }),
-
-  // exam_attempts GET
-  http.get(`${SUPABASE_URL}/rest/v1/exam_attempts`, () => {
-    return HttpResponse.json([]);
-  }),
-
-  // exam_attempts POST
-  http.post(`${SUPABASE_URL}/rest/v1/exam_attempts`, () => {
-    return HttpResponse.json({ id: 'attempt-new' }, { status: 201 });
-  }),
-
-  // exam_attempts PATCH
-  http.patch(`${SUPABASE_URL}/rest/v1/exam_attempts`, () => {
-    return HttpResponse.json(null, { status: 204 });
   }),
 
   // srs_items GET
