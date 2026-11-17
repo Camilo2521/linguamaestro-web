@@ -1,148 +1,180 @@
 # Security
 
-This document exists because several real, exploitable issues were found
-and fixed while building this app, and the reasoning behind each fix is
-worth keeping — it's the kind of thing that's easy to reintroduce by
-accident in a future endpoint if the "why" isn't written down.
+This document records the security model, the real issues that were found
+and fixed (with the reasoning, so they aren't reintroduced), and the risks
+that are known but still open. Last reviewed: 2026-11-16 (stabilization
+audit).
 
 ## The model
 
-- The frontend holds **no Supabase credentials**. It only knows the
-  backend's URL and the access token it got from login/register.
-- The backend's default client (`getUserClient`) is scoped to the calling
-  user's JWT, so Postgres RLS enforces ownership on almost every query
-  automatically (see [DATABASE.md](./DATABASE.md)).
-- The backend's `serviceClient` bypasses RLS entirely — any route that uses
-  it is a place where the *application code*, not the database, is the only
-  thing stopping one user from touching another's data, so it needs an
-  explicit ownership check. No current route uses it (its one caller was
-  the exam-evaluation pipeline, removed along with the rest of the oral-exam
-  feature — see below), but the rule stands for the next one that does.
+### Authentication
 
-## Fixed: RPC functions had no ownership check
+- Supabase Auth owns credentials. Passwords are sent once to the backend
+  (`/auth/register`, `/auth/login`) and forwarded to Supabase, which stores
+  only a hash; the backend never stores or logs them.
+- Registration requires ≥ 8 characters with an uppercase letter and a digit.
+- Sessions are Supabase JWTs: a short-lived **access token** plus a
+  **refresh token**. The frontend keeps both in `localStorage` and sends
+  `Authorization: Bearer <access_token>`; on a `401` it calls
+  `/auth/refresh` once and retries.
+- `requireAuth` (`backend/src/middleware/auth.ts`) validates the token with
+  `supabase.auth.getUser()` on **every** request (a network call to
+  Supabase Auth), so an expired or invalid token is rejected immediately.
+  Tokens are only accepted from the `Authorization` header.
 
-`increment_xp` and `update_streak` are `security definer` Postgres
-functions, callable directly from a browser with just the anon key
-(`supabase.rpc(...)`). The original versions took a raw target id
-(`p_enrollment_id`, `p_user_id`) and trusted it — meaning any authenticated
-user could call `increment_xp('someone-elses-enrollment-id', 999999)` and
-inflate (or, with a negative value, deflate) a stranger's XP and study
-hours, or force another account's streak to update. **Fix:** both functions
-now check the target belongs to `auth.uid()` (a `WHERE user_id = auth.uid()`
-clause for `increment_xp`, an early-return guard for `update_streak`) before
-touching anything. See `backend/supabase/migrations/0002_security_fixes.sql`.
+### Authorization
 
-## Fixed: client-supplied XP/score had no bounds
+- The backend's default client, `getUserClient(token)`, sends the caller's
+  JWT to Postgres, so **RLS** decides which rows a request can see or change
+  (see [DATABASE.md](./DATABASE.md#row-level-security)). Routes add
+  `user_id` filters as a second layer.
+- There are no roles and no administrative endpoints. Content tables are
+  read-only to users; content is managed directly in Supabase.
+- The backend never trusts identity data from the request body: `user_id`
+  always comes from the validated token (`req.userId`). IDs sent by the
+  client (`enrollmentId`, `lessonId`, `itemId`, `promptId`) are checked by
+  RLS and/or explicit ownership queries.
+- `serviceClient` (service-role key) bypasses RLS. **No route uses it.** Any
+  future route that does must verify ownership itself in application code.
 
-`POST /lessons/:lessonId/complete` took a `score` argument and computed XP
-as `round(score * 100)` — a tampered request with `score: 99999` would mint
-arbitrary XP through `increment_xp`. `POST /activity` took `xpEarned`
-directly with no relationship enforced to `durationMinutes` at all. **Fix:**
-`score` is clamped to `[0,1]` before use, and `xpEarned` is clamped to
-`durationMinutes × MAX_XP_PER_MINUTE` (`backend/src/utils/activity-limits.ts`)
-regardless of what the client sends.
+### Secrets and configuration
 
-## Fixed: onboarding could be completed without an enrollment
+- The frontend holds **no Supabase credentials** — only
+  `NEXT_PUBLIC_API_URL`, which is public by design.
+- The backend reads `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
+  `SUPABASE_SERVICE_ROLE_KEY` from `backend/.env`. The service-role key
+  bypasses every RLS policy: treat it as the most sensitive secret in the
+  system.
+- `.env` and `.env*.local` are git-ignored in both projects, and no secret
+  has ever been committed (verified on the full history, 2026-11-16).
 
-`onboarding_completed = true` unlocks every protected page — but every
-protected page also requires an active enrollment and redirects back to
-`/onboarding/language` if there isn't one. Nothing enforced onboarding step
-order, so reaching the final step without ever creating an enrollment (e.g.
-a direct URL, browser back/forward) would set the flag with zero
-enrollments — trapping the account in an infinite redirect loop with no UI
-path out. **Fix:** `POST /onboarding/complete` checks for at least one
-active enrollment first and returns `409 { code: "NO_ENROLLMENT" }` instead
-of completing onboarding; the frontend sends the user back to the language
-step on that response instead of retrying.
+### Validation and transport hardening
 
-## Fixed: no `.gitignore`
+- Every body/query is validated with Zod before use; client-supplied
+  numbers that affect rewards are clamped or recomputed server-side.
+- `helmet()` sets standard security headers on the API; the frontend sets
+  `X-Content-Type-Options`, `X-Frame-Options: DENY` and `Referrer-Policy`
+  (`next.config.ts`).
+- CORS allows only the `CORS_ORIGIN` list plus any `https://*.vercel.app`
+  origin (convenient for preview deploys, but it also admits any other
+  Vercel-hosted site — tighten for production).
+- `trust proxy` is set to 1 hop so rate limiting sees the real client IP
+  behind a PaaS proxy.
 
-The project wasn't a git repo yet, but `backend/.env` holds a live
-service-role key — the one credential in this system that bypasses every
-RLS policy above. Both `frontend/.gitignore` and `backend/.gitignore`
-exclude `.env*` explicitly; check this is still true before this project's
-first `git init`.
+## Fixed issues
 
-## Fixed: cross-tenant write via `activity_logs_insert_own`
+### RPC functions had no ownership check
 
-The RLS policy only checked `auth.uid() = user_id` — it never verified the
-supplied `enrollment_id` actually belonged to that same user (unlike
-`lesson_progress`/`srs_items`, which already did this correctly via an
-`exists (...)` check against `enrollments`). A user could log an activity
-row carrying their own `user_id` but someone **else's** `enrollment_id`,
-polluting another account's activity history and (at the time) feeding into
-that account's exam eligibility. **Fix:**
-`backend/supabase/migrations/0003_ownership_fixes.sql` adds the same
-`exists (...)` ownership check this policy was missing. (This migration
-originally fixed a matching gap in `exam_attempts_insert_own` too — moot now
-that the `exam_attempts` table itself is gone, see
-[ARCHITECTURE.md](./ARCHITECTURE.md).)
+`increment_xp` and `update_streak` are `security definer` functions,
+callable by any authenticated JWT. The original versions trusted the target
+id they were given, so any user could change another user's XP or streak.
+**Fix:** both check the target belongs to `auth.uid()` (`0002_security_fixes.sql`).
 
-## Fixed: no async-error safety net on any route
+### Client-supplied XP/score had no bounds
 
-Express 4 does not catch a rejected promise thrown from inside an
-`async (req, res) => {...}` handler — an unexpected exception (a null-shape
-surprise, a network error from postgrest-js that rejects instead of
-resolving `{error}`, etc.) became an unhandled promise rejection, which
-Node terminates the process on by default. No route file had any
-`try`/`catch`. **Fix:** `app.ts` imports `express-async-errors` (patches
-Express so these rejections reach the error middleware instead), and that
-middleware also distinguishes malformed-JSON body-parser errors (400) from
-a generic 500.
+`POST /lessons/:lessonId/complete` computed XP from a raw `score`, and
+`POST /activity` accepted `xpEarned` as-is. **Fix:** `score` is clamped to
+`[0,1]`; `xpEarned` is clamped to `durationMinutes × 20`
+(`backend/src/utils/activity-limits.ts`).
 
-## Fixed: no rate limiting on auth routes
+### Practice grading trusted the client
 
-`/auth/login`, `/auth/register`, `/auth/forgot-password` had no throttling
-beyond whatever Supabase's own project defaults provide — a gap for
-credential stuffing and reset-email spam. **Fix:**
-`backend/src/middleware/rateLimit.ts` adds `authLimiter` (20 req / 15 min)
-on the three auth routes.
+**Fix (by design):** `POST /practice/:promptId/complete` grades
+`multiple_choice`, `fill_blank` and `pronunciation` on the server against
+the stored prompt; a client-reported "correct" flag is not accepted, and a
+wrong answer earns 0 XP. The `writing` word-count floor is enforced
+server-side from the prompt's `target_words`.
 
-## Fixed: a few silently-swallowed Supabase errors
+### Onboarding could be completed without an enrollment
 
-`increment_xp`/`activity_logs` insert errors in `lessons.routes.ts`, and
-`update_streak` errors in `activity.routes.ts`, were fired-and-forgotten —
-a real failure (e.g. the RPC's ownership guard silently matching 0 rows)
-looked identical to success from the client's point of view. **Fix:** these
-are now logged (`console.error`) so the failure is at least visible
-operationally; the primary write's own success/failure still drives the
-HTTP response, since these are secondary side effects of an already-committed
-action.
+That trapped the account in a redirect loop. **Fix:** `POST
+/onboarding/complete` returns `409 { code: "NO_ENROLLMENT" }` when the user
+has no active enrollment.
 
-## Fixed: a couple of validation gaps
+### Cross-tenant write via `activity_logs_insert_own`
 
-- `activityType` on `POST /activity` was `z.string()` — any value not in the
-  DB's `activity_logs` check constraint (`lesson|srs|speaking|listening|
-  writing`) only failed at insert time, after the daily-limit query had
-  already run. Now a `z.enum([...])` matching the constraint exactly.
-- `enrollmentId` query params on `GET /lessons`, `GET /lessons/:lessonId`,
-  and `GET /srs/due` were read as a raw string with no shape check — a
-  malformed value produced a genuine Postgres "invalid input syntax for
-  uuid" error reported back as a misleading 404. Now validated with
-  `z.string().uuid()` first, giving a clean 400.
-- `redirectTo` on `POST /auth/forgot-password` was embedded verbatim into
-  the password-reset email with zero validation — an attacker-controlled
-  URL there is a real phishing vector. Now only honored when its origin
-  matches `CORS_ORIGIN` (the app's own frontend); anything else is dropped
-  silently and Supabase's project-level default redirect is used instead.
+The RLS policy didn't check that `enrollment_id` belonged to the caller.
+**Fix:** `0003_ownership_fixes.sql` adds the same `exists (...)` ownership
+check `lesson_progress`/`srs_items` already had.
 
-## Open items (known, not yet fixed)
+### No async-error safety net
 
-- **Dependency vulnerabilities in `frontend`**: `npm audit` reports
-  remaining issues (Next.js DoS/SSRF advisories, PostCSS XSS) that only
-  resolve by moving to Next.js 16, a major version bump out of the current
-  `^15.3.0` range. Not applied automatically — evaluate compatibility before
-  upgrading.
-- **`timeSpentSeconds` on lesson completion is unbounded** — unlike `score`,
-  it isn't clamped, so `activity_logs.duration_minutes` could be inflated by
-  a tampered request. Lower severity than the XP issues above since it
-  doesn't directly mint XP, but it does feed the daily-activity dashboard.
-- **`dashboard.routes.ts`'s `GET /` does several unchecked Supabase calls**
-  (`Promise.all` without inspecting each `error`) — a real query failure
-  currently renders as zero/empty stats rather than a 500. Lower priority
-  since it fails safe (empty, not wrong data), but worth tightening if this
-  page ever needs to surface backend outages to users.
-- If you add a new route using `serviceClient`, it needs its own explicit
-  ownership check — there is no default protection once you're on that
-  client. Search the codebase for `serviceClient` to see the existing
-  pattern before adding another one.
+A rejected promise in an async Express 4 handler could crash the process.
+**Fix:** `express-async-errors` plus a central error handler in `app.ts`
+(400 for malformed JSON, generic 500 otherwise, details only in logs).
+
+### No rate limiting on auth routes
+
+**Fix:** `authLimiter` (20 req / 15 min per IP) on register, login and
+forgot-password.
+
+### Open redirect in password-reset emails
+
+`redirectTo` was embedded verbatim in the reset email. **Fix:** only
+honored when its origin equals `CORS_ORIGIN`.
+
+### Silently swallowed side-effect errors; validation gaps
+
+XP/streak/log failures are now logged; `activityType` and `enrollmentId`
+query params are validated with Zod.
+
+### Access token in URLs (removed with the exam feature)
+
+The exam's SSE stream accepted the token as a `?token=` query parameter
+(which ends up in logs and history). That fallback was removed together
+with the exam; tokens are header-only.
+
+## Open risks
+
+Ordered by priority. Severity reflects impact on data integrity or
+confidentiality for this app.
+
+| # | Severity | Risk | Where | Planned fix |
+|---|---|---|---|---|
+| 1 | High | **Level can be set at will.** `PATCH /onboarding/diagnostic` accepts any level (including NATIVE) and can be called again at any time, bypassing CEFR progression. | `onboarding.routes.ts` | Allow only while `diagnostic_completed = false`. |
+| 2 | High | **Lesson completion can be forged.** The route doesn't check the lesson matches the enrollment's language/level, trusts the client `score`, and isn't atomic (concurrent requests can both award XP). Completing every lesson via the API advances the level. | `lessons.routes.ts` | Validate lesson ↔ enrollment, move completion + XP + level-up into one transactional RPC. |
+| 3 | High | **RLS allows updating any column of own rows** (`enrollments.current_level`, `xp_total`; `users` streak fields; `srs_items` state), and `increment_xp` accepts any amount. Exploitable by anyone holding a user JWT **and** the anon key; neither the URL nor the anon key is shipped to the browser, so this is defense-in-depth. | RLS policies, `increment_xp` | Column-level grants or narrower update policies; restrict `increment_xp` execution. |
+| 4 | High | **Dependency vulnerabilities** (`npm audit --omit=dev`, 2026-11-16). Backend: `proxy-addr` (critical), `body-parser` (high), `qs` (moderate) — transitive via Express, fixable in-range; `zod` (high, fix only in v4). Frontend: `next` (critical, fixable in-range), `postcss`, `sharp`, `source-map-js` (high, fixable), `zod` (high, v4). | `package-lock.json` | `npm audit fix` (no major bumps); mitigate zod by bounding array/string sizes. |
+| 5 | Medium | **Logout doesn't revoke the session.** `auth.signOut()` on a client with no stored session never calls Supabase, so the refresh token stays valid until it expires. | `auth.routes.ts` | Call `auth.admin.signOut(accessToken)` (revokes refresh tokens). |
+| 6 | Medium | **Answers are sent to the client.** `GET /practice` and `GET /lessons/:id` return `correct_answer` (and Learn grades client-side). | `practice.routes.ts`, `lessons.routes.ts` | Omit answers from Practice listings; consider server grading in Learn. |
+| 7 | Medium | **Client-reported effort.** Practice XP depends on client `durationSeconds` (no upper bound beyond the 360-min daily cap); `timeSpentSeconds` on lessons is unbounded; `wordCount` is client-reported. | practice/lessons routes | Bound values; derive from server timestamps where possible. |
+| 8 | Medium | **Tokens in `localStorage`** are readable by any script on the page (XSS → session theft). No Content-Security-Policy is set. | `frontend/lib/api/client.ts`, `next.config.ts` | Add a CSP; consider httpOnly-cookie refresh tokens. |
+| 9 | Medium | **Rate limiting only on 3 auth routes.** `/auth/refresh` and all data routes are unthrottled (each request also triggers a Supabase Auth call). | `app.ts` | Global per-IP/per-user limiter. |
+| 10 | Medium | **Database error messages are returned to clients** (`error.message` on 400s) — leaks schema details; register reveals whether an email already has an account. | routes | Map to generic messages; log details. |
+| 11 | Low | `forgot-password` compares `redirectTo` to the whole `CORS_ORIGIN` string, so it never matches when several origins are configured (fails closed). | `auth.routes.ts` | Compare against the parsed origin list. |
+| 12 | Low | The backend refuses to start without `SUPABASE_SERVICE_ROLE_KEY` although nothing uses it; there is no startup validation of env vars. | `lib/supabase.ts` | Create the service client lazily / drop it; validate env with Zod at boot. |
+| 13 | Low | `*.vercel.app` CORS wildcard admits any Vercel-hosted site. | `app.ts` | Restrict to the project's own preview pattern in production. |
+| 14 | Low | Day boundaries (daily cap, streak, dashboard dates) use UTC, not the user's time zone. | activity utils, `update_streak` | Use `users.timezone`. |
+| 15 | Low | `backend/.env.example` is ignored by the root `.gitignore` (`.env.*`), so the template isn't versioned; the frontend has none. | `.gitignore` | Add `!.env.example` and templates for both projects. |
+
+## Procedures
+
+### Before adding or changing an endpoint
+
+1. Put it behind `requireAuth` unless it is genuinely public.
+2. Validate every input with Zod, including bounds on numbers, strings and
+   arrays.
+3. Use `getUserClient(req.accessToken!)`; take the user id from
+   `req.userId`, never from the body.
+4. Recompute or clamp anything that affects XP, level, streak or grading on
+   the server.
+5. Don't return raw database errors or reference answers to the client.
+6. Add tests for: no token (401), another user's resource (404/400),
+   invalid input (400).
+
+### If a secret leaks
+
+- **Service-role key or anon key**: rotate the JWT secret / API keys in the
+  Supabase dashboard (Project Settings → API), update `backend/.env` in every
+  environment, redeploy the backend. Rotating the JWT secret also signs out
+  every user.
+- **A user's tokens**: revoke that user's sessions from the Supabase
+  dashboard (Authentication → Users).
+- Check Supabase logs for activity during the exposure window.
+
+### Database changes
+
+- Never run `0001_init.sql` on a database with data (it drops all tables).
+- Take a backup (Supabase dashboard backups or `pg_dump`) before applying
+  any migration to production.
+- New migrations must be idempotent and keep RLS enabled on every table.

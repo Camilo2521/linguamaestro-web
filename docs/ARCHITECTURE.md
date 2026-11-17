@@ -1,5 +1,90 @@
 # Architecture
 
+## Responsibilities
+
+| Concern | Frontend (`frontend/`) | Backend (`backend/`) | Supabase |
+|---|---|---|---|
+| UI, routing, redirects | ✅ | | |
+| Holding credentials | only the user's own access/refresh token | anon + service-role keys | |
+| Input validation | form-level (UX only) | **authoritative** (Zod) | constraints, enums |
+| Authorization | none (cosmetic route guards) | identity via `requireAuth`, ownership filters | **RLS** — primary guard |
+| Business rules (XP, level-up, daily cap, practice grading, SM-2) | display only | ✅ | `increment_xp`, `update_streak` RPCs |
+| Persistence, auth sessions | | | ✅ |
+
+Rule of thumb: anything the frontend computes is a convenience for the UI;
+anything that changes stored state (XP, level, SRS schedule, streak) is
+decided by the backend or the database.
+
+## Module organization
+
+```
+backend/src/
+  index.ts              # loads .env, starts the server
+  app.ts                # createApp(): helmet, CORS, JSON, routes, 404, error handler
+  lib/supabase.ts       # getUserClient(token), anonClient, serviceClient
+  middleware/           # auth.ts (requireAuth), rateLimit.ts (authLimiter)
+  routes/               # one router per resource: auth, onboarding, lessons,
+                        # srs, activity, practice, dashboard
+  utils/                # srs-schedule (SM-2), levels, activity-limits,
+                        # text-similarity, languages
+  validations/          # auth.schema.ts (other schemas are inline in routes)
+  types.ts              # shared domain types
+backend/supabase/migrations/   # SQL, applied manually in order
+backend/tests/                 # Vitest + supertest, Supabase mocked
+
+frontend/
+  app/                  # App Router: / (landing), (auth)/login|register,
+                        # onboarding/{welcome,language,native,diagnosis,schedule},
+                        # (app)/{dashboard,learn,learn/[lessonId],learn/review,
+                        # practice,progress,settings}
+  components/           # ui/ (primitives), layout/, dashboard/, learning/,
+                        # providers/ (AuthProvider, QueryProvider)
+  hooks/                # data hooks (React Query) and browser APIs
+                        # (useSpeechRecognition)
+  lib/api/              # typed fetch wrappers, one file per backend resource
+  lib/utils/            # levels, languages, text-similarity, cn
+  stores/               # Zustand: session, srs, ui
+  types/domain.types.ts # domain types (same content as backend/src/types.ts)
+  tests/                # unit/, integration/ (Vitest + Testing Library + MSW),
+                        # e2e/ (Playwright)
+```
+
+Some utilities exist in both projects with identical content (`levels`,
+`languages`, `text-similarity`, the domain types; `srs-schedule` and
+`activity-limits` also have frontend copies used only by tests). Changing
+one requires changing the other — consolidation is planned.
+
+## State management (frontend)
+
+- **Server state**: fetched through `lib/api/*`. Some screens use TanStack
+  React Query (`QueryProvider`: `staleTime` 60 s, 1 retry, no refetch on
+  focus); others call the API directly in effects.
+- **Client state** (Zustand):
+  - `session.store` — current user profile, active enrollments,
+    `activeEnrollmentId`. Only `activeEnrollmentId` is persisted
+    (`localStorage` key `lm-session`); the profile is reloaded from
+    `GET /auth/me` on each route change.
+  - `srs.store` — the in-progress review session (queue, index, counters).
+  - `ui.store` — toasts and sidebar state (only `sidebarCollapsed` is
+    persisted, under `lm-ui`).
+- **Tokens**: `lm_access_token` / `lm_refresh_token` in `localStorage`
+  (`lib/api/client.ts`).
+
+## Error handling
+
+- **Backend**: `express-async-errors` forwards rejected promises from async
+  handlers to the central error middleware in `app.ts`, which returns `400`
+  for malformed JSON and a generic `500` otherwise (details logged with
+  `console.error`). Expected failures (validation, not found, limits) are
+  returned explicitly by each route with the `{ success: false, error }`
+  envelope. Secondary side effects (XP RPC, streak RPC, activity log, SRS
+  seeding) log failures but don't fail the request.
+- **Frontend**: `lib/api/client.ts` throws `ApiError(message, status, code)`
+  for any non-2xx response, after one transparent refresh-and-retry on
+  `401`; a `401` that survives the retry clears the stored tokens. Pages
+  catch `ApiError` and show the backend's message (toasts). Unexpected
+  render errors inside the app shell are caught by `app/(app)/error.tsx`.
+
 ## Why this split looks the way it does
 
 The app started as a single Next.js project where Server Components and
@@ -108,3 +193,23 @@ to `getNextLevel(current_level)` (`backend/src/utils/levels.ts`) — no exam,
 no gate, just content completion. The response carries `leveledUp` (the new
 level, or `null`) so the frontend can show a level-up celebration and patch
 the enrollment in the session store without waiting for a refetch.
+
+Known gaps in this progression logic (completion is not tied to the
+lesson's language/level, the client-supplied score, no transaction, and the
+placement endpoint being callable repeatedly) are tracked in
+[SECURITY.md](./SECURITY.md#open-risks).
+
+## Practice and speech recognition
+
+Practice prompts are reference content in `practice_prompts`, selected by
+language + level + mode. Oral modes (`speaking`, `shadowing`, `debate`) are
+effort-based: the backend only checks a minimum duration. `writing` checks a
+minimum word count. `multiple_choice`, `fill_blank` and `pronunciation` are
+graded by the backend against the stored answer (see
+[API.md](./API.md#practice--practice-all-)).
+
+`pronunciation` relies on the browser's Web Speech API
+(`frontend/hooks/useSpeechRecognition.ts`, `SpeechRecognition` /
+`webkitSpeechRecognition`). It is not available in every browser (notably
+Firefox); the hook reports `isSupported` and an error message instead of
+throwing. No audio ever reaches the backend — only the recognized text.
