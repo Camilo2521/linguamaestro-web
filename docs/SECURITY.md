@@ -118,6 +118,26 @@ honored when its origin equals `CORS_ORIGIN`.
 XP/streak/log failures are now logged; `activityType` and `enrollmentId`
 query params are validated with Zod.
 
+### CEFR level could be set or skipped at will
+
+`PATCH /onboarding/diagnostic` accepted any level (including NATIVE) at any
+time, and `POST /lessons/:id/complete` accepted any lesson id, decided XP
+with a read-then-write check and advanced the level unconditionally.
+**Fix (stabilization stage 3):** the placement quiz can only be applied once
+per enrollment (atomic `WHERE diagnostic_completed = false`, else `409`);
+lesson completion requires the lesson to belong to the enrollment's language
+and current level (`409` otherwise), awards XP only to the request that
+atomically flips the lesson to completed, and advances the level with a
+compare-and-set on `current_level`. Covered by
+`backend/tests/onboarding.routes.test.ts` and `lessons.routes.test.ts`.
+
+### Known-vulnerable dependency versions
+
+`npm audit fix` (no major upgrades) updated Next.js to 15.5.29 (critical
+advisory) and the Express transitive dependencies `proxy-addr`,
+`body-parser`, `qs`, plus `sharp` and `source-map-js`. Remaining items are in
+open risk 4.
+
 ### Access token in URLs (removed with the exam feature)
 
 The exam's SSE stream accepted the token as a `?token=` query parameter
@@ -127,14 +147,15 @@ with the exam; tokens are header-only.
 ## Open risks
 
 Ordered by priority. Severity reflects impact on data integrity or
-confidentiality for this app.
+confidentiality for this app. Numbers are stable IDs — resolved items move
+to "Fixed issues" and their number is not reused (#1 was resolved in
+stage 3).
 
 | # | Severity | Risk | Where | Planned fix |
 |---|---|---|---|---|
-| 1 | High | **Level can be set at will.** `PATCH /onboarding/diagnostic` accepts any level (including NATIVE) and can be called again at any time, bypassing CEFR progression. | `onboarding.routes.ts` | Allow only while `diagnostic_completed = false`. |
-| 2 | High | **Lesson completion can be forged.** The route doesn't check the lesson matches the enrollment's language/level, trusts the client `score`, and isn't atomic (concurrent requests can both award XP). Completing every lesson via the API advances the level. | `lessons.routes.ts` | Validate lesson ↔ enrollment, move completion + XP + level-up into one transactional RPC. |
+| 2 | Medium | **Lesson completion is self-reported.** Learn grades exercises client-side, so the API accepts any `score` (clamped to [0,1]) and a client can mark every lesson of its current level complete without doing it, which advances the level. (Language/level matching, once-only XP and race-safe level-up are fixed — see above.) | `lessons.routes.ts`, `LessonEngine.tsx` | Server-side grading of lesson exercises. |
 | 3 | High | **RLS allows updating any column of own rows** (`enrollments.current_level`, `xp_total`; `users` streak fields; `srs_items` state), and `increment_xp` accepts any amount. Exploitable by anyone holding a user JWT **and** the anon key; neither the URL nor the anon key is shipped to the browser, so this is defense-in-depth. | RLS policies, `increment_xp` | Column-level grants or narrower update policies; restrict `increment_xp` execution. |
-| 4 | High | **Dependency vulnerabilities** (`npm audit --omit=dev`, 2026-11-16). Backend: `proxy-addr` (critical), `body-parser` (high), `qs` (moderate) — transitive via Express, fixable in-range; `zod` (high, fix only in v4). Frontend: `next` (critical, fixable in-range), `postcss`, `sharp`, `source-map-js` (high, fixable), `zod` (high, v4). | `package-lock.json` | `npm audit fix` (no major bumps); mitigate zod by bounding array/string sizes. |
+| 4 | Medium | **Remaining dependency advisories** after `npm audit fix` (2026-11-16, Next 15.5.29). `zod` < 4.6.6 (high: memory exhaustion validating oversized constrained collections) in both projects — fix only in zod v4. Frontend: the `postcss@8.4.31` bundled inside `next` (high; affects processing untrusted CSS, which this app doesn't do) — fix only in Next 16. | `package.json` | Bound array/string sizes in Zod schemas (e.g. `/srs/seed` `vocabularyIds`); plan zod v4 / Next 16 upgrades. |
 | 5 | Medium | **Logout doesn't revoke the session.** `auth.signOut()` on a client with no stored session never calls Supabase, so the refresh token stays valid until it expires. | `auth.routes.ts` | Call `auth.admin.signOut(accessToken)` (revokes refresh tokens). |
 | 6 | Medium | **Answers are sent to the client.** `GET /practice` and `GET /lessons/:id` return `correct_answer` (and Learn grades client-side). | `practice.routes.ts`, `lessons.routes.ts` | Omit answers from Practice listings; consider server grading in Learn. |
 | 7 | Medium | **Client-reported effort.** Practice XP depends on client `durationSeconds` (no upper bound beyond the 360-min daily cap); `timeSpentSeconds` on lessons is unbounded; `wordCount` is client-reported. | practice/lessons routes | Bound values; derive from server timestamps where possible. |

@@ -58,7 +58,7 @@ Enumerations used below:
 |---|---|---|
 | `POST /onboarding/enrollment` | `{ languageCode }` | Creates an active enrollment at level `A1` and returns it. Nothing prevents creating several enrollments for the same language. |
 | `PATCH /onboarding/native-language` | `{ nativeLanguage }` | String of 2–10 chars (not restricted to the 6 learning languages). |
-| `PATCH /onboarding/diagnostic` | `{ enrollmentId, level }` | Sets the enrollment's `current_level` from the placement quiz and marks `diagnostic_completed`. The level is chosen client-side and the endpoint can currently be called again at any time — known risk, see [SECURITY.md](./SECURITY.md#open-risks). |
+| `PATCH /onboarding/diagnostic` | `{ enrollmentId, level }` | Sets the enrollment's `current_level` from the placement quiz and marks `diagnostic_completed`. **Allowed once per enrollment**: the update only applies while `diagnostic_completed = false` (atomic check-and-set). Afterwards → `409 { code: "DIAGNOSTIC_ALREADY_COMPLETED" }` (the frontend shows a notice and continues onboarding). `404` if the enrollment isn't the caller's. A learner who skips the quiz can still take it once later. |
 | `POST /onboarding/complete` | `{ dailyGoalMinutes, activeDays }` | `dailyGoalMinutes`: integer 15–180. `activeDays`: non-empty array of integers 0–6 (0 = Monday … 6 = Sunday). Sets `onboarding_completed`. **`409 { code: "NO_ENROLLMENT" }`** if the user has no active enrollment; the frontend sends the user back to the language step. |
 
 ## Lessons — `/lessons` (all 🔒)
@@ -67,14 +67,20 @@ Enumerations used below:
 |---|---|
 | `GET /lessons?enrollmentId=` | `enrollmentId` must be a UUID (`400` otherwise) and belong to the caller (`404` otherwise). Returns `{ lessons, progress }`: lessons for the enrollment's language + **current** level ordered by `order_index`, and this enrollment's `lesson_progress` rows (`lesson_id, completed, score`). |
 | `GET /lessons/:lessonId?enrollmentId=` | Returns `{ lesson, exercises, enrollmentId }`, exercises sorted by `order_index`. `404` if the lesson doesn't exist or the enrollment isn't the caller's. Exercises include `correct_answer` (grading in Learn is done client-side). |
-| `POST /lessons/:lessonId/complete` | Body `{ enrollmentId (uuid), score (number), timeSpentSeconds (int ≥ 0) }`. See below. Returns `{ xpEarned, leveledUp }`. |
+| `POST /lessons/:lessonId/complete` | `lessonId` UUID. Body `{ enrollmentId (uuid), score (number), timeSpentSeconds (int 0–21600) }`. See below. Returns `{ xpEarned, leveledUp }`. |
 
 `POST /lessons/:lessonId/complete`, step by step:
 
-1. `score` is clamped to `[0, 1]`. XP = `round(score × 100)`, or `0` if
-   this lesson was already completed for this enrollment.
-2. Upserts `lesson_progress` (`completed = true`). RLS rejects an
-   enrollment the caller doesn't own (`400`).
+1. Loads the enrollment (must be the caller's, else `404`) and the lesson
+   (`404` if missing). The lesson must belong to the enrollment's language
+   **and current level** — the same set `GET /lessons` lists — otherwise
+   `409 { code: "LESSON_NOT_IN_CURRENT_LEVEL" }`.
+2. Records completion in `lesson_progress` and decides XP atomically:
+   `INSERT … ON CONFLICT DO NOTHING RETURNING`, then (if the row existed)
+   `UPDATE … WHERE completed = false RETURNING`. Only the request that
+   actually flips the lesson to completed earns XP = `round(score × 100)`
+   with `score` clamped to `[0, 1]`; repeats (including concurrent
+   duplicates) earn `0` and just record the latest score/time.
 3. If XP > 0, calls the `increment_xp` RPC (also adds `XP / 100` hours to
    `total_study_hours`).
 4. Inserts an `activity_logs` row (`activity_type = 'lesson'`,
@@ -84,12 +90,15 @@ Enumerations used below:
    are left untouched.
 6. If every lesson at the enrollment's current language + level is now
    completed, advances `current_level` to the next level
-   (A1→A2→B1→B2→C1→C2→NATIVE; NATIVE is terminal) and returns it as
-   `leveledUp`; otherwise `leveledUp` is `null`. A level with zero lessons
-   never advances.
+   (A1→A2→B1→B2→C1→C2→NATIVE; NATIVE is terminal) with a compare-and-set
+   (`UPDATE … WHERE current_level = <validated level>`), and returns the new
+   level as `leveledUp` only if this request performed the advance;
+   otherwise `leveledUp` is `null`. A level with zero lessons never
+   advances.
 
 Steps 3–5 are side effects: their failures are logged server-side and do
-not fail the request. The steps are not wrapped in a transaction.
+not fail the request. The steps are individually atomic but not wrapped in
+one transaction. Lesson completion does not update the streak.
 
 ## SRS (spaced repetition) — `/srs` (all 🔒)
 
@@ -103,7 +112,10 @@ SM-2 as implemented: new ease = `EF + (0.1 − (5 − q)(0.08 + (5 − q)·0.02)
 floored at 1.3 and applied on every review (including failed ones). If
 `q < 3`: repetitions reset to 0, interval 1 day. Otherwise repetitions + 1
 and interval = 1 day (first success), 6 days (second), then
-`round(previous interval × new EF)`.
+`round(previous interval × new EF)`. `next_review_at` = now + interval in
+UTC days. Lowering EF on failed reviews is a deliberate deviation from the
+original SM-2 (which leaves it unchanged); reference values are pinned in
+`backend/tests/sm2.test.ts`.
 
 ## Activity — `/activity` (all 🔒)
 
@@ -191,6 +203,8 @@ for the streak and daily minutes) but earns 0 XP.
 | 404 | Resource not found or not owned | route-specific message |
 | 404 | Unknown route | `{ error: "Ruta no encontrada" }` |
 | 409 | Onboarding completed without enrollment | `{ code: "NO_ENROLLMENT", error: "Primero elige un idioma para aprender." }` |
+| 409 | Placement quiz already taken for this enrollment | `{ code: "DIAGNOSTIC_ALREADY_COMPLETED" }` |
+| 409 | Completing a lesson outside the current language/level | `{ code: "LESSON_NOT_IN_CURRENT_LEVEL" }` |
 | 429 | Daily 360-minute cap | `{ blocked: true, error: "Límite diario alcanzado (360 min)" }` |
 | 429 | Auth rate limit | `{ error: "Demasiados intentos. Intenta de nuevo más tarde." }` |
 | 500 | Unhandled exception | `{ error: "Error interno del servidor" }` (details only in server logs) |

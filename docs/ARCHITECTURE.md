@@ -50,9 +50,10 @@ frontend/
 ```
 
 Some utilities exist in both projects with identical content (`levels`,
-`languages`, `text-similarity`, the domain types; `srs-schedule` and
-`activity-limits` also have frontend copies used only by tests). Changing
-one requires changing the other — consolidation is planned.
+`languages`, `text-similarity`, the domain types). Changing one requires
+changing the other. Business logic that only the server runs (SM-2 in
+`srs-schedule`, `activity-limits`) lives only in the backend, and its tests
+are in `backend/tests/`.
 
 ## State management (frontend)
 
@@ -194,9 +195,12 @@ no gate, just content completion. The response carries `leveledUp` (the new
 level, or `null`) so the frontend can show a level-up celebration and patch
 the enrollment in the session store without waiting for a refetch.
 
-Known gaps in this progression logic (completion is not tied to the
-lesson's language/level, the client-supplied score, no transaction, and the
-placement endpoint being callable repeatedly) are tracked in
+Progression safeguards: only lessons from the enrollment's language and
+current level can be completed; XP is awarded only to the request that
+atomically marks a lesson completed; the level-up is a compare-and-set on
+`current_level`; and the placement quiz (`PATCH /onboarding/diagnostic`) can
+set the level only once per enrollment. The remaining gap — lesson scores
+are self-reported because Learn grades client-side — is tracked in
 [SECURITY.md](./SECURITY.md#open-risks).
 
 ## Practice and speech recognition
