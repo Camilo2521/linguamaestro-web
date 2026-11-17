@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeSchedule, computeScheduleISO } from '@/lib/utils/srs-schedule';
+import { computeSchedule, computeScheduleISO } from '../src/utils/srs-schedule.js';
 
 const BASE = { easeFactor: 2.5, intervalDays: 1, repetitions: 0 };
 const NOW = new Date('2025-06-01T12:00:00Z');
@@ -68,11 +68,16 @@ describe('computeSchedule — interval progression', () => {
 });
 
 describe('computeSchedule — next review date', () => {
-  it('schedules review `newInterval` days from now', () => {
+  it('schedules review exactly `newInterval` UTC days from now', () => {
     const { newInterval, nextReviewDate } = computeSchedule(3, 2.5, 1, 1, NOW);
-    const expected = new Date(NOW);
-    expected.setDate(expected.getDate() + newInterval);
-    expect(nextReviewDate.toDateString()).toBe(expected.toDateString());
+    expect(newInterval).toBe(6);
+    expect(nextReviewDate.toISOString()).toBe('2025-06-07T12:00:00.000Z');
+  });
+
+  it('crosses month and year boundaries correctly', () => {
+    const { nextReviewDate } = computeSchedule(4, 2.5, 6, 2, new Date('2025-12-20T08:00:00Z'));
+    // 6 × 2.5 = 15 days after Dec 20
+    expect(nextReviewDate.toISOString()).toBe('2026-01-04T08:00:00.000Z');
   });
 });
 
@@ -126,5 +131,45 @@ describe('computeSchedule — uses provided `now`', () => {
   });
 });
 
-// Unused variable from BASE kept to document the default shape
-void BASE;
+describe('SM-2 reference values', () => {
+  it.each([
+    [5, 0.1],
+    [4, 0],
+    [3, -0.14],
+    [2, -0.32],
+    [1, -0.54],
+    [0, -0.8],
+  ])('quality %i changes EF by %f', (q, delta) => {
+    const { newEase } = computeSchedule(q, 2.5, 6, 2, NOW);
+    expect(newEase).toBeCloseTo(2.5 + delta, 10);
+  });
+
+  it('follows the 1 → 6 → round(I × EF) interval sequence for a new card', () => {
+    let { easeFactor, intervalDays, repetitions } = BASE;
+    const intervals: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const r = computeSchedule(4, easeFactor, intervalDays, repetitions, NOW);
+      ({ newEase: easeFactor, newInterval: intervalDays, newRepetitions: repetitions } = r);
+      intervals.push(intervalDays);
+    }
+    // EF stays 2.5 at q=4: 1, 6, 6×2.5 = 15, 15×2.5 = 37.5 → 38
+    expect(intervals).toEqual([1, 6, 15, 38]);
+    expect(repetitions).toBe(4);
+  });
+
+  it('a lapse after a long streak restarts the card but keeps the lowered EF (product decision)', () => {
+    const r = computeSchedule(2, 2.5, 38, 4, NOW);
+    expect(r.newRepetitions).toBe(0);
+    expect(r.newInterval).toBe(1);
+    expect(r.newEase).toBeCloseTo(2.18, 10);
+    // The next successful review starts the sequence again from 1 day.
+    const next = computeSchedule(4, r.newEase, r.newInterval, r.newRepetitions, NOW);
+    expect(next.newInterval).toBe(1);
+  });
+
+  it('EF never goes below 1.3, even after many lapses', () => {
+    let ease = 2.5;
+    for (let i = 0; i < 10; i++) ease = computeSchedule(0, ease, 1, 0, NOW).newEase;
+    expect(ease).toBe(1.3);
+  });
+});

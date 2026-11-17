@@ -5,7 +5,7 @@ import {
   computeXP,
   MAX_DAILY_MINUTES,
   MIN_SESSION_MINUTES,
-} from '@/lib/utils/activity-limits';
+} from '../src/utils/activity-limits.js';
 
 describe('validateSessionDuration', () => {
   it('accepts exactly MIN_SESSION_MINUTES', () => {
