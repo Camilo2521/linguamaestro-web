@@ -8,8 +8,8 @@ y chino.
 
 ## Demo en línea
 
-- **App:** _pendiente — URL de Vercel_
-- **API:** _pendiente — URL de Render_ (`/health` responde `{"ok":true}`)
+- **App:** https://linguamaestro-web-gk7i.vercel.app
+- **API:** https://linguamaestro-api.onrender.com (`/health` responde `{"ok":true}`)
 
 > El backend usa el plan gratuito de Render: si lleva un rato sin uso, la
 > primera petición puede tardar ~1 minuto mientras el servidor despierta.
