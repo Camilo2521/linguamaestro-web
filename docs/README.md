@@ -87,7 +87,7 @@ npm run dev                # http://localhost:4000, GET /health → { ok: true }
 | `CORS_ORIGIN` | yes in production (default `http://localhost:3000`) | Comma-separated list of allowed frontend origins. Any `https://*.vercel.app` origin is also allowed automatically (see `backend/src/app.ts`). |
 | `SUPABASE_URL` | yes | Supabase project URL |
 | `SUPABASE_ANON_KEY` | yes | Supabase anon key — used for auth calls and, combined with the user's JWT, for every data query |
-| `SUPABASE_SERVICE_ROLE_KEY` | currently yes | Service-role key. No route uses it today, but `lib/supabase.ts` creates the client at startup, so the process fails to start without it. Never expose it. |
+| `SUPABASE_SERVICE_ROLE_KEY` | no | Service-role key. No route uses it today; the client is created lazily only if a route calls `getServiceClient()`, so leave it unset unless needed. Never expose it. |
 
 A template lives at `backend/.env.example` (and `frontend/.env.example`
 for the frontend); the root `.gitignore` excludes every `.env*` file except

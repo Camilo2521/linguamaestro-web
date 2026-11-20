@@ -176,7 +176,7 @@ Every table has RLS enabled. The pattern is consistent:
 Because the backend's default Supabase client (`getUserClient`) carries the
 real user's JWT, these policies are the primary enforcement layer — even a
 route that forgot a `.eq('user_id', ...)` filter still can't leak another
-user's rows. `serviceClient` (service-role, bypasses RLS entirely) is still
+user's rows. `getServiceClient()` (service-role, bypasses RLS entirely) is still
 exported from `lib/supabase.ts`, but no route currently uses it — its only
 caller was the exam-evaluation pipeline, removed along with the rest of the
 oral-exam feature. Any future route that reaches for it must do its own

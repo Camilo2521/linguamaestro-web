@@ -3,7 +3,7 @@ import request from 'supertest';
 
 vi.mock('../src/lib/supabase.js', () => ({
   getUserClient: vi.fn(),
-  serviceClient: {},
+  getServiceClient: () => ({}),
   anonClient: {},
 }));
 

@@ -21,7 +21,7 @@ decided by the backend or the database.
 backend/src/
   index.ts              # loads .env, starts the server
   app.ts                # createApp(): helmet, CORS, JSON, routes, 404, error handler
-  lib/supabase.ts       # getUserClient(token), anonClient, serviceClient
+  lib/supabase.ts       # getUserClient(token), anonClient, getServiceClient() (lazy)
   middleware/           # auth.ts (requireAuth), rateLimit.ts (authLimiter)
   routes/               # one router per resource: auth, onboarding, lessons,
                         # srs, activity, practice, dashboard
@@ -133,7 +133,7 @@ uses is a real security decision, not a style choice:
 - **`getUserClient(accessToken)`** — scoped to the calling user's token.
   Every query runs through Postgres RLS as that user. This is the default;
   almost every route uses it.
-- **`serviceClient`** — the service-role key, bypasses RLS entirely. For a
+- **`getServiceClient()`** — the service-role key, bypasses RLS entirely. For a
   route that genuinely needs to escape row ownership (e.g. reading a signed
   storage URL on someone's behalf). No current route uses it — its one
   caller was the exam-evaluation pipeline, removed along with the oral-exam
@@ -168,7 +168,7 @@ Every user-owned table (`users`, `enrollments`, `lesson_progress`,
 `auth.uid()` (see [DATABASE.md](./DATABASE.md)). Because the backend's
 default client (`getUserClient`) carries the real user's JWT, RLS enforces
 ownership even if a route forgot to add a `.eq('user_id', ...)` filter. Any
-future route reaching for `serviceClient` instead would need its own manual
+future route reaching for `getServiceClient()` instead would need its own manual
 ownership check in application code — see the note on that client above
 and [SECURITY.md](./SECURITY.md).
 

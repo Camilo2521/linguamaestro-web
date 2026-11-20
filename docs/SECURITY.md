@@ -34,15 +34,15 @@ audit).
   always comes from the validated token (`req.userId`). IDs sent by the
   client (`enrollmentId`, `lessonId`, `itemId`, `promptId`) are checked by
   RLS and/or explicit ownership queries.
-- `serviceClient` (service-role key) bypasses RLS. **No route uses it.** Any
+- `getServiceClient()` (service-role key) bypasses RLS. **No route uses it.** Any
   future route that does must verify ownership itself in application code.
 
 ### Secrets and configuration
 
 - The frontend holds **no Supabase credentials** — only
   `NEXT_PUBLIC_API_URL`, which is public by design.
-- The backend reads `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
-  `SUPABASE_SERVICE_ROLE_KEY` from `backend/.env`. The service-role key
+- The backend requires `SUPABASE_URL` and `SUPABASE_ANON_KEY` (checked at boot) and accepts an optional
+  `SUPABASE_SERVICE_ROLE_KEY` (unused today; the production deployment omits it). The service-role key
   bypasses every RLS policy: treat it as the most sensitive secret in the
   system.
 - `.env` and `.env*.local` are git-ignored in both projects, and no secret
@@ -144,6 +144,13 @@ The exam's SSE stream accepted the token as a `?token=` query parameter
 (which ends up in logs and history). That fallback was removed together
 with the exam; tokens are header-only.
 
+### Service-role key optional, env checked at boot (was open risk 12)
+
+`lib/supabase.ts` creates the service-role client lazily via
+`getServiceClient()`, so the key is no longer needed to start; `index.ts`
+exits with a clear message if `SUPABASE_URL` or `SUPABASE_ANON_KEY` is
+missing.
+
 ### Env templates versioned (was open risk 15)
 
 The root `.gitignore` now re-includes `.env.example`; `backend/.env.example`
@@ -155,7 +162,7 @@ only. Real `.env` / `.env.local` files remain ignored.
 Ordered by priority. Severity reflects impact on data integrity or
 confidentiality for this app. Numbers are stable IDs — resolved items move
 to "Fixed issues" and their number is not reused (#1 was resolved in
-stage 3, #15 during deployment prep).
+stage 3, #12 and #15 during deployment prep).
 
 | # | Severity | Risk | Where | Planned fix |
 |---|---|---|---|---|
@@ -169,7 +176,6 @@ stage 3, #15 during deployment prep).
 | 9 | Medium | **Rate limiting only on 3 auth routes.** `/auth/refresh` and all data routes are unthrottled (each request also triggers a Supabase Auth call). | `app.ts` | Global per-IP/per-user limiter. |
 | 10 | Medium | **Database error messages are returned to clients** (`error.message` on 400s) — leaks schema details; register reveals whether an email already has an account. | routes | Map to generic messages; log details. |
 | 11 | Low | `forgot-password` compares `redirectTo` to the whole `CORS_ORIGIN` string, so it never matches when several origins are configured (fails closed). | `auth.routes.ts` | Compare against the parsed origin list. |
-| 12 | Low | The backend refuses to start without `SUPABASE_SERVICE_ROLE_KEY` although nothing uses it; there is no startup validation of env vars. | `lib/supabase.ts` | Create the service client lazily / drop it; validate env with Zod at boot. |
 | 13 | Low | `*.vercel.app` CORS wildcard admits any Vercel-hosted site. | `app.ts` | Restrict to the project's own preview pattern in production. |
 | 14 | Low | Day boundaries (daily cap, streak, dashboard dates) use UTC, not the user's time zone. | activity utils, `update_streak` | Use `users.timezone`. |
 
