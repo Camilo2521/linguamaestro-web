@@ -14,7 +14,7 @@ services:
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
-        value: "20"
+        value: "22"
       - key: CORS_ORIGIN
         sync: false # the Vercel frontend URL, e.g. https://linguamaestro.vercel.app
       - key: SUPABASE_URL

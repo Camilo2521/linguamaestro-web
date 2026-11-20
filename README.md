@@ -36,7 +36,7 @@ backend, que es el único que tiene las credenciales.
 
 ## Ejecutar localmente (resumen)
 
-Requiere Node.js 20+ y un proyecto de Supabase con las migraciones aplicadas.
+Requiere Node.js 22+ y un proyecto de Supabase con las migraciones aplicadas.
 
 ```bash
 cd backend  && cp .env.example .env        && npm install && npm run dev   # http://localhost:4000

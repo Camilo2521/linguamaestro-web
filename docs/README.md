@@ -52,8 +52,8 @@ only project holding Supabase keys.
 
 ## Requirements
 
-- Node.js ≥ 18.18 (Next.js 15's minimum) and npm. The project has been
-  verified locally with Node 25 / npm 11.
+- Node.js ≥ 22 and npm (the installed `@supabase/supabase-js` needs a native
+  WebSocket, Node 22+). Verified locally with Node 25 / npm 11.
 - A Supabase project (Postgres + Auth). Nothing database-related runs
   locally.
 
