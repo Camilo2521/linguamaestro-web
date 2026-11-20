@@ -89,9 +89,9 @@ npm run dev                # http://localhost:4000, GET /health → { ok: true }
 | `SUPABASE_ANON_KEY` | yes | Supabase anon key — used for auth calls and, combined with the user's JWT, for every data query |
 | `SUPABASE_SERVICE_ROLE_KEY` | currently yes | Service-role key. No route uses it today, but `lib/supabase.ts` creates the client at startup, so the process fails to start without it. Never expose it. |
 
-A template lives at `backend/.env.example`. Note: the root `.gitignore`
-pattern `.env.*` currently also ignores that template, so it is not
-versioned yet (tracked as an open item in [SECURITY.md](./SECURITY.md)).
+A template lives at `backend/.env.example` (and `frontend/.env.example`
+for the frontend); the root `.gitignore` excludes every `.env*` file except
+these templates.
 
 ### 3. Frontend
 
@@ -124,10 +124,16 @@ variable.
 
 ## Deployment
 
-There is no deployment configuration in this repository. Comments in the
-code assume the frontend on Vercel and the backend behind a reverse proxy
-(e.g. Railway — `app.set('trust proxy', 1)` in `backend/src/app.ts`). In
-any environment:
+Reference setup: backend on **Render** (free plan) via the
+[`render.yaml`](../render.yaml) Blueprint, frontend on **Vercel** with
+*Root Directory* = `frontend`, database on Supabase. The backend runs behind
+Render's proxy (`app.set('trust proxy', 1)` in `backend/src/app.ts`), and
+CORS already accepts any `https://*.vercel.app` origin. Free Render services
+sleep after inactivity; the first request afterwards takes ~1 minute.
+
+Order: deploy the backend first, set the frontend's `NEXT_PUBLIC_API_URL`
+to its URL, deploy the frontend, then put the frontend URL in the backend's
+`CORS_ORIGIN`. In any environment:
 
 - set `CORS_ORIGIN` on the backend to the real frontend origin(s);
 - set `NEXT_PUBLIC_API_URL` on the frontend to the backend's public URL

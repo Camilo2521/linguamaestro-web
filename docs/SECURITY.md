@@ -144,12 +144,18 @@ The exam's SSE stream accepted the token as a `?token=` query parameter
 (which ends up in logs and history). That fallback was removed together
 with the exam; tokens are header-only.
 
+### Env templates versioned (was open risk 15)
+
+The root `.gitignore` now re-includes `.env.example`; `backend/.env.example`
+and a new `frontend/.env.example` are versioned with placeholder values
+only. Real `.env` / `.env.local` files remain ignored.
+
 ## Open risks
 
 Ordered by priority. Severity reflects impact on data integrity or
 confidentiality for this app. Numbers are stable IDs — resolved items move
 to "Fixed issues" and their number is not reused (#1 was resolved in
-stage 3).
+stage 3, #15 during deployment prep).
 
 | # | Severity | Risk | Where | Planned fix |
 |---|---|---|---|---|
@@ -166,7 +172,6 @@ stage 3).
 | 12 | Low | The backend refuses to start without `SUPABASE_SERVICE_ROLE_KEY` although nothing uses it; there is no startup validation of env vars. | `lib/supabase.ts` | Create the service client lazily / drop it; validate env with Zod at boot. |
 | 13 | Low | `*.vercel.app` CORS wildcard admits any Vercel-hosted site. | `app.ts` | Restrict to the project's own preview pattern in production. |
 | 14 | Low | Day boundaries (daily cap, streak, dashboard dates) use UTC, not the user's time zone. | activity utils, `update_streak` | Use `users.timezone`. |
-| 15 | Low | `backend/.env.example` is ignored by the root `.gitignore` (`.env.*`), so the template isn't versioned; the frontend has none. | `.gitignore` | Add `!.env.example` and templates for both projects. |
 
 ## Procedures
 

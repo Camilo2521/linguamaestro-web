@@ -3,6 +3,7 @@
 # files within its own tree. This just catches anything at the root itself.
 .env
 .env.*
+!.env.example
 .DS_Store
 Thumbs.db
 *.log
